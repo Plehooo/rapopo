@@ -86,8 +86,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var topBar: View
     private lateinit var statusBar: View
     private lateinit var startupOverlay: View
-    private lateinit var filterCard: View
-    private lateinit var channelListLabel: View
     private lateinit var bottomNavTv: View
     private lateinit var bottomNavGame: View
     private lateinit var bottomNavTvLabel: TextView
@@ -171,7 +169,6 @@ class MainActivity : AppCompatActivity() {
 
         startupOverlay.visibility = View.VISIBLE
         playerContainer.visibility = View.GONE
-        setLoadingToolbarVisible(false)
         statusText.text = "LIVE TV • Memuat channel..."
 
         // The first screen is rendered immediately. Reading/parsing the local M3U
@@ -183,8 +180,6 @@ class MainActivity : AppCompatActivity() {
         topBar = findViewById(R.id.topBar)
         statusBar = findViewById(R.id.statusBar)
         startupOverlay = findViewById(R.id.startupOverlay)
-        filterCard = findViewById(R.id.filterCard)
-        channelListLabel = findViewById(R.id.channelListLabel)
         groupSpinner = findViewById(R.id.groupSpinner)
         statusText = findViewById(R.id.statusText)
         retryButton = findViewById(R.id.retryButton)
@@ -221,20 +216,6 @@ class MainActivity : AppCompatActivity() {
             if (isDone) checkGameAnswer()
             isDone
         }
-    }
-
-    /**
-     * Sembunyikan toolbar (status bar, dropdown grup, Prev/Next, label
-     * "SEMUA CHANNEL") selama startupOverlay lagi keliatan, biar gak numpuk
-     * sama panel loading. Dipanggil balik jadi true begitu playlist selesai
-     * dimuat (baik berhasil maupun gagal, supaya pesan error di statusText
-     * tetap jelas terlihat tanpa toolbar kosong di bawahnya).
-     */
-    private fun setLoadingToolbarVisible(visible: Boolean) {
-        val visibility = if (visible) View.VISIBLE else View.GONE
-        statusBar.visibility = visibility
-        filterCard.visibility = visibility
-        channelListLabel.visibility = visibility
     }
 
     /**
@@ -316,7 +297,6 @@ class MainActivity : AppCompatActivity() {
                 mainHandler.post {
                     if (!isFinishing && !isDestroyed) {
                         startupOverlay.visibility = View.GONE
-                        setLoadingToolbarVisible(true)
                         channelList.visibility = View.VISIBLE
                         playerContainer.visibility = View.VISIBLE
                         statusText.text = "LIVE TV • playlist remote tidak tersedia"
@@ -348,7 +328,6 @@ class MainActivity : AppCompatActivity() {
 
                 if (parsed.isEmpty()) {
                     startupOverlay.visibility = View.GONE
-                    setLoadingToolbarVisible(true)
                     channelList.visibility = View.VISIBLE
                     playerContainer.visibility = View.VISIBLE
                     statusText.text = "LIVE TV • belum ada channel"
@@ -367,7 +346,6 @@ class MainActivity : AppCompatActivity() {
 
                 startupComplete = true
                 startupOverlay.visibility = View.GONE
-                setLoadingToolbarVisible(true)
                 channelList.visibility = View.VISIBLE
                 playerContainer.visibility = View.VISIBLE
 
@@ -996,8 +974,10 @@ class MainActivity : AppCompatActivity() {
 
         topBar.visibility = View.GONE
         statusBar.visibility = View.GONE
-        filterCard.visibility = View.GONE
-        channelListLabel.visibility = View.GONE
+        searchInput.visibility = View.GONE
+        groupSpinner.visibility = View.GONE
+        previousButton.visibility = View.GONE
+        nextButton.visibility = View.GONE
         retryVisibleBeforeFullscreen =
             retryButton.visibility == View.VISIBLE
         retryButton.visibility = View.GONE
@@ -1033,8 +1013,10 @@ class MainActivity : AppCompatActivity() {
 
         topBar.visibility = View.VISIBLE
         statusBar.visibility = View.VISIBLE
-        filterCard.visibility = View.VISIBLE
-        channelListLabel.visibility = View.VISIBLE
+        searchInput.visibility = View.VISIBLE
+        groupSpinner.visibility = View.VISIBLE
+        previousButton.visibility = View.VISIBLE
+        nextButton.visibility = View.VISIBLE
         channelList.visibility = View.VISIBLE
         bottomNavBar.visibility = View.VISIBLE
         bottomNavDivider.visibility = View.VISIBLE
