@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@color/bg_root"
+    android:padding="24dp">
+
+    <FrameLayout
+        android:id="@+id/splashLogoFrame"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
+        android:background="@drawable/bg_channel"
+        android:padding="12dp"
+        android:alpha="0"
+        android:scaleX="0.6"
+        android:scaleY="0.6">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:src="@drawable/ic_app_logo"
+            android:scaleType="centerInside"
+            android:contentDescription="@string/app_name" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/splashTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="LIVE TV"
+        android:textColor="@color/text_primary"
+        android:textSize="26sp"
+        android:letterSpacing="0.04"
+        android:textStyle="bold"
+        android:alpha="0"
+        android:translationY="14dp" />
+
+    <TextView
+        android:id="@+id/splashSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="by DITZYA"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:alpha="0"
+        android:translationY="14dp" />
+
+    <ProgressBar
+        android:id="@+id/splashProgress"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginTop="18dp"
+        android:alpha="0" />
+</LinearLayout>

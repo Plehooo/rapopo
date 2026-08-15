@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Border gradasi ungu-pink, kesan "megah" dibanding kotak polos -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="45"
+                android:startColor="@color/game_accent_light"
+                android:centerColor="@color/game_accent"
+                android:endColor="@color/game_accent_dark"
+                android:type="linear" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+    <!-- Isi dalam gelap, border gradasi cuma keliatan tipis di pinggir -->
+    <item
+        android:top="3dp"
+        android:bottom="3dp"
+        android:start="3dp"
+        android:end="3dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#0F1219" />
+            <corners android:radius="17dp" />
+        </shape>
+    </item>
+</layer-list>

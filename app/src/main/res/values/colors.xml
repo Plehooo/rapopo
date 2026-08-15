@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_root">#08090C</color>
+    <color name="bg_root_soft">#0E1117</color>
+    <color name="surface">#151922</color>
+    <color name="surface_elevated">#1B212C</color>
+    <color name="surface_stroke">#262D3A</color>
+    <color name="divider">#1C222D</color>
+
+    <!-- aksen utama: merah-oranye ala tombol "LIVE TV", plus varian lebih terang untuk gradient -->
+    <color name="accent">#FF3B54</color>
+    <color name="accent_light">#FF7A66</color>
+    <color name="accent_dark">#B01E3D</color>
+    <color name="accent_soft">#3A2027</color>
+    <color name="accent_glow">#40FF3B54</color>
+
+    <!-- aksen kedua: biru-ungu buat tab Game, biar kebeda dari TV tapi tetep senada -->
+    <color name="game_accent">#7C4DFF</color>
+    <color name="game_accent_light">#B388FF</color>
+    <color name="game_accent_dark">#4A2FB0</color>
+    <color name="game_accent_glow">#407C4DFF</color>
+
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9AA5B4</color>
+    <color name="text_tertiary">#5C6474</color>
+
+    <color name="live_dot">#00E676</color>
+    <color name="live_dot_glow">#4000E676</color>
+
+    <!-- warna bintang favorite, biar beda dan gampang dikenali dari aksen lain -->
+    <color name="favorite_gold">#FFC542</color>
+</resources>

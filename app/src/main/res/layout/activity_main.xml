@@ -1,0 +1,561 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_root">
+
+    <!-- Top bar -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:gravity="center_vertical"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:background="@drawable/bg_topbar"
+        android:elevation="6dp">
+
+        <FrameLayout
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="@drawable/bg_channel"
+            android:padding="7dp">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/ic_app_logo"
+                android:scaleType="centerInside"
+                android:contentDescription="@string/app_name" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="14dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/app_name"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:letterSpacing="0.02"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/activeChannelText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:text="@string/production_by"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="15dp"
+            android:layout_height="15dp"
+            android:background="@drawable/bg_live_dot" />
+    </LinearLayout>
+
+    <!-- Hairline under the top bar so it reads as a distinct header, not just a color change -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider" />
+
+    <!-- Panel TV: semua yang tadinya langsung anak dari root, sekarang
+         dibungkus 1 container biar gampang di-show/hide pas pindah tab
+         ke Game, tanpa pindah Activity/layar. -->
+    <LinearLayout
+        android:id="@+id/tvContentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/startupOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="230dp"
+            android:background="@color/bg_root"
+            android:foregroundGravity="center">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <FrameLayout
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:background="@drawable/bg_channel"
+                android:padding="11dp">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/ic_app_logo"
+                    android:scaleType="centerInside"
+                    android:contentDescription="@string/app_name" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="LIVE TV"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:letterSpacing="0.03"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/startupSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Production by DITZYA"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <ProgressBar
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginTop="20dp"
+                android:indeterminateTint="@color/accent" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Memuat channel..."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <com.bittv.iptv.ui.RatioFrameLayout
+        android:id="@+id/playerContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#000000"
+        android:visibility="gone">
+
+
+        <Button
+            android:id="@+id/fullscreenRetryButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_gravity="center"
+            android:paddingStart="22dp"
+            android:paddingEnd="22dp"
+            android:background="@drawable/bg_button_primary"
+            android:textColor="@color/text_primary"
+            android:text="↻  Coba Lagi"
+            android:textAllCaps="false"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/playerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#000000"
+            app:use_controller="false"
+            app:show_buffering="when_playing"
+            app:resize_mode="fit"
+            app:controller_layout_id="@layout/exo_player_control_view"
+            app:show_shuffle_button="false"
+            app:show_subtitle_button="false"
+            app:show_vr_button="false"
+            app:show_previous_button="false"
+            app:show_next_button="false"
+            app:show_rewind_button="false"
+            app:show_fastforward_button="false" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/scrim_player_bottom" />
+
+        <Button
+            android:id="@+id/fullscreenButton"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="10dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_fullscreen_toggle"
+            android:text="⛶"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:elevation="6dp"
+            android:contentDescription="Fullscreen" />
+
+    </com.bittv.iptv.ui.RatioFrameLayout>
+
+    <LinearLayout
+        android:id="@+id/statusBar"
+        android:layout_width="match_parent"
+        android:layout_height="38dp"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:background="@color/bg_root_soft">
+
+        <View
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginEnd="9dp"
+            android:background="@drawable/bg_live_dot" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="LIVE TV"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <!-- Filter card: search + group + prev/next grouped into one elevated block
+         instead of three loose rows, so the toolbar reads as a single unit. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/bg_channel"
+        android:padding="10dp"
+        android:elevation="2dp">
+
+        <!-- Search dihapus dari tampilan sesuai request — cukup dropdown
+             grup aja, satu baris, gak ada dua elemen berdampingan lagi.
+             View EditText tetap ada tapi disembunyikan total (0dp, GONE)
+             biar kode yang masih baca teksnya gak perlu diubah/rawan error;
+             karena gak pernah diisi, hasilnya sama kayak "tanpa search". -->
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone" />
+
+        <Spinner
+            android:id="@+id/groupSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_input"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/previousButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_button_outline"
+                android:textColor="@color/text_primary"
+                android:text="‹  Prev"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/nextButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_primary"
+                android:textColor="@color/text_primary"
+                android:text="Next  ›"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/retryButton"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/bg_button_primary"
+        android:textColor="@color/text_primary"
+        android:textAllCaps="false"
+        android:text="↻  Coba Lagi"
+        android:visibility="gone" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginBottom="2dp"
+        android:text="SEMUA CHANNEL"
+        android:textColor="@color/text_tertiary"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.08" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/channelList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingStart="8dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="16dp" />
+
+    </LinearLayout>
+    <!-- /tvContentContainer -->
+
+    <!-- Panel Game: "Tebak Gambar", tampil gantiin panel TV pas tab Game
+         dipilih. Video TV otomatis pause pas panel ini aktif, dan play
+         lagi otomatis pas balik ke panel TV. -->
+    <LinearLayout
+        android:id="@+id/gameContentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🖼️ TEBAK GAMBAR"
+                android:textColor="@color/game_accent_light"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:letterSpacing="0.06" />
+
+            <TextView
+                android:id="@+id/gameTimerText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_game_timer"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:layout_marginEnd="8dp"
+                android:text="⏱ 60"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/gameScoreText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_button_game"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:text="Skor: 0"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- Kartu gambar bergaya "megah": border gradasi + shadow -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_game_image_frame"
+            android:elevation="6dp"
+            android:padding="10dp">
+
+            <ImageView
+                android:id="@+id/gameImageView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:contentDescription="Tebak gambar" />
+
+            <ProgressBar
+                android:id="@+id/gameImageLoading"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="@color/game_accent_light" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/gameFeedbackText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:minLines="1" />
+
+        <EditText
+            android:id="@+id/gameAnswerInput"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_input"
+            android:hint="Jawabanmu apa..."
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:singleLine="true"
+            android:imeOptions="actionDone"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_tertiary"
+            android:textCursorDrawable="@null"
+            android:textAllCaps="true" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/gameSkipButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_button_outline"
+                android:textColor="@color/text_primary"
+                android:text="Lewati"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/gameSubmitButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_game"
+                android:textColor="@color/text_primary"
+                android:text="Jawab"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+    <!-- /gameContentContainer -->
+
+    <!-- Bottom nav: TV (halaman ini) vs Game (Tebak Kata) — gaya minimal ala
+         WhatsApp: ikon di atas, label kecil di bawah, tab aktif dikasih warna
+         aksen, bukan tombol kotak warna-warni. Disembunyikan total pas
+         fullscreen biar gak numpuk/ganggu di bawah video. -->
+    <View
+        android:id="@+id/bottomNavDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider" />
+
+    <LinearLayout
+        android:id="@+id/bottomNavBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@color/bg_root_soft">
+
+        <LinearLayout
+            android:id="@+id/bottomNavTv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📺"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/bottomNavTvLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="TV"
+                android:textColor="@color/accent"
+                android:textStyle="bold"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/bottomNavGame"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎮"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/bottomNavGameLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="Game"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
