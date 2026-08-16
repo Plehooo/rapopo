@@ -85,6 +85,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nextButton: Button
     private lateinit var topBar: View
     private lateinit var statusBar: View
+    private lateinit var filterCard: View
+    private lateinit var filterMenuButton: View
     private lateinit var startupOverlay: View
     private lateinit var bottomNavTv: View
     private lateinit var bottomNavGame: View
@@ -186,6 +188,8 @@ class MainActivity : AppCompatActivity() {
     private fun bindViews() {
         topBar = findViewById(R.id.topBar)
         statusBar = findViewById(R.id.statusBar)
+        filterCard = findViewById(R.id.filterCard)
+        filterMenuButton = findViewById(R.id.filterMenuButton)
         startupOverlay = findViewById(R.id.startupOverlay)
         groupSpinner = findViewById(R.id.groupSpinner)
         statusText = findViewById(R.id.statusText)
@@ -562,6 +566,13 @@ class MainActivity : AppCompatActivity() {
         fullscreenButton.setOnClickListener { toggleFullscreen() }
         previousButton.setOnClickListener { playAdjacent(-1) }
         nextButton.setOnClickListener { playAdjacent(1) }
+
+        // Tombol "⋯": buka/tutup card filter (grup + prev/next), defaultnya
+        // ketutup biar gak makan tempat kayak sebelumnya.
+        filterMenuButton.setOnClickListener {
+            filterCard.visibility =
+                if (filterCard.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
 
         bottomNavTv.setOnClickListener { showTvTab() }
         bottomNavGame.setOnClickListener { showGameTab() }
@@ -1069,10 +1080,7 @@ class MainActivity : AppCompatActivity() {
 
         topBar.visibility = View.GONE
         statusBar.visibility = View.GONE
-        searchInput.visibility = View.GONE
-        groupSpinner.visibility = View.GONE
-        previousButton.visibility = View.GONE
-        nextButton.visibility = View.GONE
+        filterCard.visibility = View.GONE
         retryVisibleBeforeFullscreen =
             retryButton.visibility == View.VISIBLE
         retryButton.visibility = View.GONE
@@ -1089,8 +1097,7 @@ class MainActivity : AppCompatActivity() {
             height = ViewGroup.LayoutParams.MATCH_PARENT
         }
         playerContainer.requestLayout()
-        // Fullscreen: isi penuh layar kanan-kiri-atas-bawah (stretch),
-        // beda dengan mode normal yang pakai FIT (letterbox, jaga rasio asli).
+        // Stretch penuh layar sesuai permintaan — biarin FILL, gak usah diubah.
         playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
 
         applyFullscreenSystemBars()
@@ -1120,10 +1127,9 @@ class MainActivity : AppCompatActivity() {
 
         topBar.visibility = View.VISIBLE
         statusBar.visibility = View.VISIBLE
-        searchInput.visibility = View.VISIBLE
-        groupSpinner.visibility = View.VISIBLE
-        previousButton.visibility = View.VISIBLE
-        nextButton.visibility = View.VISIBLE
+        // filterCard sengaja TIDAK dipaksa balik VISIBLE — biar tetap
+        // ketutup (default), sama kayak sebelum masuk fullscreen. User
+        // buka lagi sendiri lewat tombol "⋯" kalau perlu.
         channelList.visibility = View.VISIBLE
         bottomNavBar.visibility = View.VISIBLE
         bottomNavDivider.visibility = View.VISIBLE

@@ -234,20 +234,40 @@
             android:textSize="12sp"
             android:maxLines="1"
             android:ellipsize="end" />
+
+        <!-- Pemicu kecil buat filter (ganti card besar yang dulu selalu
+             nongol). Diklik baru muncul pilihan grup + prev/next. -->
+        <TextView
+            android:id="@+id/filterMenuButton"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginStart="8dp"
+            android:gravity="center"
+            android:text="⋯"
+            android:textColor="@color/text_secondary"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:background="@drawable/bg_filter_menu_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="Filter channel" />
     </LinearLayout>
 
-    <!-- Filter card: search + group + prev/next grouped into one elevated block
-         instead of three loose rows, so the toolbar reads as a single unit. -->
+    <!-- Filter card: search + group + prev/next. Defaultnya KETUTUP (gone),
+         cuma muncul pas tombol "⋯" di atas diklik — biar gak makan tempat
+         terus-terusan kayak sebelumnya. -->
     <LinearLayout
+        android:id="@+id/filterCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:layout_marginStart="14dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="10dp"
         android:layout_marginEnd="14dp"
         android:background="@drawable/bg_channel"
         android:padding="10dp"
-        android:elevation="2dp">
+        android:elevation="4dp"
+        android:visibility="gone">
 
         <!-- Search dihapus dari tampilan sesuai request — cukup dropdown
              grup aja, satu baris, gak ada dua elemen berdampingan lagi.
