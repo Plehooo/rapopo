@@ -1005,7 +1005,14 @@ class MainActivity : AppCompatActivity() {
         val newPlayer = buildPlayer(channel.headers, channel.streamUrl)
         player = newPlayer
         playerView.player = newPlayer
-        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        // Bug: dulu selalu di-set FIT di sini, jadi kalau ganti channel pas
+        // lagi fullscreen, stretch-nya ke-reset balik ke FIT. Sekarang ikut
+        // status fullscreen yang aktif sekarang.
+        playerView.resizeMode = if (isFullscreen) {
+            AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
         attachPlayerListener(newPlayer)
 
         val cleanUrl = channel.streamUrl.substringBefore('#')
@@ -1274,7 +1281,15 @@ class MainActivity : AppCompatActivity() {
         player?.release()
         player = buildPlayer(channel.headers, channel.streamUrl)
         playerView.player = player
-        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        // Bug utama yang lo laporin: fungsi ini jalan tiap kali app dibuka
+        // lagi dari background, dan dulu SELALU maksa FIT — jadi walaupun
+        // lagi fullscreen sebelum ke-minimize, begitu dibuka lagi stretch-nya
+        // ilang balik jadi FIT. Sekarang ngikut status fullscreen saat ini.
+        playerView.resizeMode = if (isFullscreen) {
+            AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
 
         player?.let { attachPlayerListener(it) }
 
