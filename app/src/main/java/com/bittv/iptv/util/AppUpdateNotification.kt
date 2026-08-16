@@ -47,8 +47,11 @@ object AppUpdateNotification {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_app_logo)
+            .setLargeIcon(NotificationBranding.largeIcon(context))
+            .setColor(NotificationBranding.accentColor(context))
             .setContentTitle("Update tersedia — v$versionName")
             .setContentText("Ketuk untuk memasang versi terbaru")
+            .setSubText("LIVE TV")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

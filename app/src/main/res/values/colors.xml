@@ -33,4 +33,15 @@
 
     <!-- warna bintang favorite, biar beda dan gampang dikenali dari aksen lain -->
     <color name="favorite_gold">#FFCB4D</color>
+
+    <!-- Identitas "biru premium" milik app sendiri: dipakai buat ring logo,
+         border channel yang lagi diputar, badge "SEDANG DIPUTAR", dan warna
+         notifikasi. Dipisah dari "accent" (merah, khusus penanda LIVE) dan
+         "game_accent" (ungu, khusus tab Game) biar tiap warna punya makna
+         sendiri-sendiri, bukan asal ganti-ganti warna. -->
+    <color name="brand_blue">#2F6BFF</color>
+    <color name="brand_blue_light">#7AA6FF</color>
+    <color name="brand_blue_dark">#123A9E</color>
+    <color name="brand_blue_soft">#16224A</color>
+    <color name="brand_blue_glow">#4D2F6BFF</color>
 </resources>

@@ -89,8 +89,11 @@ object FreeNotification {
 
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_app_logo)
+                .setLargeIcon(NotificationBranding.largeIcon(context))
+                .setColor(NotificationBranding.accentColor(context))
                 .setContentTitle(payload.title)
                 .setContentText(payload.message)
+                .setSubText("LIVE TV")
                 .setStyle(NotificationCompat.BigTextStyle().bigText(payload.message))
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)

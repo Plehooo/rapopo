@@ -18,6 +18,12 @@ object PlaylistNotification {
     private const val PREFS = "bittv_notifications"
     private const val KEY_LAST_REVISION = "last_revision"
 
+    // ID TETAP dengan sengaja (bukan dari `revision` yang terus naik) —
+    // dulu pakai revision.toInt() sebagai ID, jadi tiap ada update malah
+    // bikin notif BARU numpuk di tray, bukan gantiin yang lama. Sekarang
+    // notif baru selalu MENGGANTI notif lama, sama kayak FreeNotification.
+    private const val NOTIFICATION_ID = 7302
+
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
@@ -72,15 +78,18 @@ object PlaylistNotification {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_app_logo)
+            .setLargeIcon(NotificationBranding.largeIcon(context))
+            .setColor(NotificationBranding.accentColor(context))
             .setContentTitle("LIVE TV • Ada pembaruan")
             .setContentText(body)
+            .setSubText("LIVE TV")
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        NotificationManagerCompat.from(context).notify(revision.toInt(), notification)
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         prefs.edit().putLong(KEY_LAST_REVISION, revision).apply()
     }
 }

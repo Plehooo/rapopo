@@ -139,12 +139,6 @@ class MainActivity : AppCompatActivity() {
     private var epgProgrammes = emptyList<com.bittv.iptv.util.EpgProgramme>()
     private var retryVisibleBeforeFullscreen = false
 
-    // BUG FIX: KEY_LAST_CHANNEL sudah lama disimpan di saveHistory() tapi
-    // tidak pernah dibaca ulang, jadi app selalu autoplay channel PERTAMA
-    // di playlist alih-alih channel terakhir yang ditonton user. Nilainya
-    // ditampung di sini pas restoreState(), dipakai sekali pas autoplay awal.
-    private var pendingLastChannelUrl: String? = null
-
     private val prefs by lazy { getSharedPreferences("bittv", MODE_PRIVATE) }
 
     private val foregroundCheckRunnable = object : Runnable {
@@ -187,22 +181,6 @@ class MainActivity : AppCompatActivity() {
         // The first screen is rendered immediately. Reading/parsing the local M3U
         // happens off the main thread so a large playlist cannot freeze startup.
         mainHandler.post { loadLocalPlaylistAsync() }
-
-        // BUG FIX: sebelumnya status fullscreen cuma disimpan di variabel biasa
-        // (isFullscreen), tidak pernah dipulihkan lewat savedInstanceState.
-        // Di banyak HP (Xiaomi/Oppo/dll yang agresif matiin Activity pas app
-        // di-background), keluar app pas lagi fullscreen lalu balik lagi bikin
-        // Activity dibuat ulang dari nol -> isFullscreen balik ke false ->
-        // tampilan balik ke mode normal (gak lebar/gak fullscreen) padahal
-        // sebelumnya fullscreen. Di sini status fullscreen dipulihkan lagi.
-        if (savedInstanceState?.getBoolean(KEY_WAS_FULLSCREEN, false) == true) {
-            mainHandler.post { enterFullscreen() }
-        }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putBoolean(KEY_WAS_FULLSCREEN, isFullscreen)
     }
 
     private fun bindViews() {
@@ -400,11 +378,9 @@ class MainActivity : AppCompatActivity() {
                 playerContainer.visibility = View.VISIBLE
 
                 /*
-                 * Autoplay channel terakhir yang ditonton (kalau masih ada
-                 * di playlist), kalau tidak ada baru fallback ke channel
-                 * paling atas. Delay kecil memberi kesempatan layout selesai
-                 * sehingga PlayerView tidak terlihat seperti blank hitam
-                 * saat startup.
+                 * Autoplay channel paling atas.
+                 * Delay kecil memberi kesempatan layout selesai sehingga
+                 * PlayerView tidak terlihat seperti blank hitam saat startup.
                  */
                 mainHandler.postDelayed({
                     if (!isFinishing &&
@@ -412,11 +388,8 @@ class MainActivity : AppCompatActivity() {
                         startupComplete &&
                         activeChannel == null
                     ) {
-                        val resumeChannel = pendingLastChannelUrl
-                            ?.let { url -> parsed.firstOrNull { it.streamUrl == url } }
-                            ?: parsed.first()
                         playChannel(
-                            resumeChannel,
+                            parsed.first(),
                             isRetry = false,
                             saveAsLast = true
                         )
@@ -638,7 +611,7 @@ class MainActivity : AppCompatActivity() {
         isGameTabActive = false
 
         crossFadeSwap(from = gameContentContainer, to = tvContentContainer)
-        bottomNavTvLabel.setTextColor(resources.getColor(R.color.accent, theme))
+        bottomNavTvLabel.setTextColor(resources.getColor(R.color.brand_blue, theme))
         bottomNavGameLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
 
         // Timer dijeda (bukan direset) selama keluar dari tab Game, biar pas
@@ -659,7 +632,9 @@ class MainActivity : AppCompatActivity() {
         isGameTabActive = true
 
         crossFadeSwap(from = tvContentContainer, to = gameContentContainer)
-        bottomNavGameLabel.setTextColor(resources.getColor(R.color.accent, theme))
+        // Dulu ini salah pakai R.color.accent (merah, punya tab TV/LIVE).
+        // Sekarang pakai game_accent (ungu) — warna sendiri buat tab Game.
+        bottomNavGameLabel.setTextColor(resources.getColor(R.color.game_accent_light, theme))
         bottomNavTvLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
 
         // Video otomatis berhenti selama di tab Game, hemat data/baterai.
@@ -1082,7 +1057,6 @@ class MainActivity : AppCompatActivity() {
             ?.lineSequence()
             ?.filter { it.isNotBlank() }
             ?.forEach(history::addLast)
-        pendingLastChannelUrl = prefs.getString(KEY_LAST_CHANNEL, null)
     }
 
     private fun toggleFullscreen() {
@@ -1349,7 +1323,6 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_LAST_CHANNEL = "last_channel"
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
-        private const val KEY_WAS_FULLSCREEN = "was_fullscreen"
 
         // Banyak server IPTV/CDN nge-block request yang bukan dari browser
         // (User-Agent kosong/khas library kayak "ExoPlayerLib" gampang kena

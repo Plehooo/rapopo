@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Channel yang sedang diputar: border merah accent + gradient lebih terang -->
+    <!-- Channel yang sedang diputar: border biru brand + gradient lebih terang.
+         Merah (accent) sengaja disisakan khusus buat penanda "LIVE", biar tiap
+         warna di app ini punya arti sendiri, bukan dipakai bolak-balik. -->
     <item android:state_selected="true">
-        <ripple android:color="@color/accent_glow">
+        <ripple android:color="@color/brand_blue_glow">
             <item>
                 <shape android:shape="rectangle">
                     <gradient
                         android:angle="135"
-                        android:startColor="@color/accent_soft"
+                        android:startColor="@color/brand_blue_soft"
                         android:endColor="@color/surface_elevated"
                         android:type="linear" />
                     <corners android:radius="18dp" />
-                    <stroke android:width="2dp" android:color="@color/accent" />
+                    <stroke android:width="2dp" android:color="@color/brand_blue" />
                 </shape>
             </item>
         </ripple>

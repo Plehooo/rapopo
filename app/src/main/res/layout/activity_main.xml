@@ -20,7 +20,7 @@
         <FrameLayout
             android:layout_width="42dp"
             android:layout_height="42dp"
-            android:background="@drawable/bg_channel"
+            android:background="@drawable/bg_logo_frame"
             android:padding="7dp">
 
             <ImageView
@@ -99,7 +99,7 @@
             <FrameLayout
                 android:layout_width="68dp"
                 android:layout_height="68dp"
-                android:background="@drawable/bg_channel"
+                android:background="@drawable/bg_logo_frame"
                 android:padding="11dp">
 
                 <ImageView
@@ -709,7 +709,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="3dp"
                 android:text="TV"
-                android:textColor="@color/accent"
+                android:textColor="@color/brand_blue"
                 android:textStyle="bold"
                 android:textSize="11sp" />
         </LinearLayout>
