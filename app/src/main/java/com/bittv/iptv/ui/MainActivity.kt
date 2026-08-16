@@ -86,8 +86,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var topBar: View
     private lateinit var statusBar: View
     private lateinit var startupOverlay: View
-    private lateinit var filterCard: View
-    private lateinit var channelListLabel: View
     private lateinit var bottomNavTv: View
     private lateinit var bottomNavGame: View
     private lateinit var bottomNavTvLabel: TextView
@@ -95,10 +93,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNavBar: View
     private lateinit var bottomNavDivider: View
 
-    // --- Panel Game ("Tebak Gambar"), tampil di layar yang sama, gantiin
-    //     panel TV pas tab Game aktif. Soal diambil dari JSON remote. ---
+    // --- Panel Game: menu pilihan game + layar "Tebak Gambar", tampil di
+    //     layar yang sama, gantiin panel TV pas tab Game aktif. Menu game
+    //     dirancang biar gampang nambah game lain di kartu-kartu berikutnya;
+    //     "Tebak Gambar" adalah yang pertama, soalnya diambil dari JSON remote. ---
     private lateinit var tvContentContainer: View
     private lateinit var gameContentContainer: View
+    private lateinit var gameMenuContainer: View
+    private lateinit var tebakGambarContainer: View
+    private lateinit var gameCardTebakGambar: View
+    private lateinit var gameBackButton: View
     private lateinit var gameFeedbackText: TextView
     private lateinit var gameScoreText: TextView
     private lateinit var gameTimerText: TextView
@@ -107,6 +111,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gameAnswerInput: EditText
 
     private var isGameTabActive = false
+    private var isTebakGambarActive = false
     private var gameScore = 0
     private var gameItems: List<TebakGambarRepository.Item> = emptyList()
     private var gameCurrentItem: TebakGambarRepository.Item? = null
@@ -171,7 +176,6 @@ class MainActivity : AppCompatActivity() {
 
         startupOverlay.visibility = View.VISIBLE
         playerContainer.visibility = View.GONE
-        setLoadingToolbarVisible(false)
         statusText.text = "LIVE TV • Memuat channel..."
 
         // The first screen is rendered immediately. Reading/parsing the local M3U
@@ -183,8 +187,6 @@ class MainActivity : AppCompatActivity() {
         topBar = findViewById(R.id.topBar)
         statusBar = findViewById(R.id.statusBar)
         startupOverlay = findViewById(R.id.startupOverlay)
-        filterCard = findViewById(R.id.filterCard)
-        channelListLabel = findViewById(R.id.channelListLabel)
         groupSpinner = findViewById(R.id.groupSpinner)
         statusText = findViewById(R.id.statusText)
         retryButton = findViewById(R.id.retryButton)
@@ -206,12 +208,19 @@ class MainActivity : AppCompatActivity() {
 
         tvContentContainer = findViewById(R.id.tvContentContainer)
         gameContentContainer = findViewById(R.id.gameContentContainer)
+        gameMenuContainer = findViewById(R.id.gameMenuContainer)
+        tebakGambarContainer = findViewById(R.id.tebakGambarContainer)
+        gameCardTebakGambar = findViewById(R.id.gameCardTebakGambar)
+        gameBackButton = findViewById(R.id.gameBackButton)
         gameFeedbackText = findViewById(R.id.gameFeedbackText)
         gameScoreText = findViewById(R.id.gameScoreText)
         gameTimerText = findViewById(R.id.gameTimerText)
         gameImageView = findViewById(R.id.gameImageView)
         gameImageLoading = findViewById(R.id.gameImageLoading)
         gameAnswerInput = findViewById(R.id.gameAnswerInput)
+
+        gameCardTebakGambar.setOnClickListener { openTebakGambar() }
+        gameBackButton.setOnClickListener { backToGameMenu() }
 
         findViewById<Button>(R.id.gameSkipButton).setOnClickListener { nextGameImage(reveal = true) }
         findViewById<Button>(R.id.gameSubmitButton).setOnClickListener { checkGameAnswer() }
@@ -221,20 +230,6 @@ class MainActivity : AppCompatActivity() {
             if (isDone) checkGameAnswer()
             isDone
         }
-    }
-
-    /**
-     * Sembunyikan toolbar (status bar, dropdown grup, Prev/Next, label
-     * "SEMUA CHANNEL") selama startupOverlay lagi keliatan, biar gak numpuk
-     * sama panel loading. Dipanggil balik jadi true begitu playlist selesai
-     * dimuat (baik berhasil maupun gagal, supaya pesan error di statusText
-     * tetap jelas terlihat tanpa toolbar kosong di bawahnya).
-     */
-    private fun setLoadingToolbarVisible(visible: Boolean) {
-        val visibility = if (visible) View.VISIBLE else View.GONE
-        statusBar.visibility = visibility
-        filterCard.visibility = visibility
-        channelListLabel.visibility = visibility
     }
 
     /**
@@ -260,6 +255,19 @@ class MainActivity : AppCompatActivity() {
                 view.updatePadding(bottom = bottomStartPadding + bars.bottom)
                 insets
             }
+        }
+
+        // Jaring pengaman lapis terakhir buat bug "keluar-masuk fullscreen jadi
+        // gak full lagi": tiap kali sistem nge-apply ulang window insets
+        // (habis rotasi, dialog sistem tutup, dll) sementara kita lagi
+        // fullscreen tapi status/nav bar-nya somehow kelihatan lagi, langsung
+        // sembunyikan ulang. Ini nutupin celah timing yang gak ke-cover sama
+        // panggilan di enterFullscreen()/onResume()/onWindowFocusChanged().
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+            if (isFullscreen && insets.isVisible(WindowInsetsCompat.Type.systemBars())) {
+                view.post { if (isFullscreen) applyFullscreenSystemBars() }
+            }
+            insets
         }
     }
 
@@ -287,6 +295,7 @@ class MainActivity : AppCompatActivity() {
                 override fun handleOnBackPressed() {
                     when {
                         isFullscreen -> exitFullscreen()
+                        isGameTabActive && isTebakGambarActive -> backToGameMenu()
                         isGameTabActive -> showTvTab()
                         else -> {
                             isEnabled = false
@@ -316,7 +325,6 @@ class MainActivity : AppCompatActivity() {
                 mainHandler.post {
                     if (!isFinishing && !isDestroyed) {
                         startupOverlay.visibility = View.GONE
-                        setLoadingToolbarVisible(true)
                         channelList.visibility = View.VISIBLE
                         playerContainer.visibility = View.VISIBLE
                         statusText.text = "LIVE TV • playlist remote tidak tersedia"
@@ -348,7 +356,6 @@ class MainActivity : AppCompatActivity() {
 
                 if (parsed.isEmpty()) {
                     startupOverlay.visibility = View.GONE
-                    setLoadingToolbarVisible(true)
                     channelList.visibility = View.VISIBLE
                     playerContainer.visibility = View.VISIBLE
                     statusText.text = "LIVE TV • belum ada channel"
@@ -367,7 +374,6 @@ class MainActivity : AppCompatActivity() {
 
                 startupComplete = true
                 startupOverlay.visibility = View.GONE
-                setLoadingToolbarVisible(true)
                 channelList.visibility = View.VISIBLE
                 playerContainer.visibility = View.VISIBLE
 
@@ -498,10 +504,45 @@ class MainActivity : AppCompatActivity() {
             isSelected = { activeChannel?.streamUrl == it.streamUrl }
         )
         this.channelAdapter = adapter
-        channelList.layoutManager = GridLayoutManager(this, 2)
+        channelList.layoutManager = GridLayoutManager(this, computeChannelSpanCount())
         channelList.adapter = adapter
         channelList.setHasFixedSize(false)
         channelList.clipToPadding = false
+
+        // Grid-nya "2 kolom" itu cuma pas buat lebar HP biasa. Di layar
+        // sempit (HP kecil) kartu jadi ketekan/kegencet, di layar lebar
+        // (tablet/foldable) jadi kegedean & jaraknya boros. Di sini kolomnya
+        // dihitung ulang dari lebar RecyclerView yang sebenarnya, bukan
+        // angka tetap, jadi ukuran kartu konsisten "pas" di semua ukuran.
+        channelList.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            val oldWidth = oldRight - oldLeft
+            if (width > 0 && width != oldWidth) {
+                val spanCount = computeChannelSpanCount()
+                (channelList.layoutManager as? GridLayoutManager)?.let { lm ->
+                    if (lm.spanCount != spanCount) lm.spanCount = spanCount
+                }
+            }
+        }
+    }
+
+    /**
+     * Berapa kolom yang pas buat lebar layar sekarang. Target lebar tiap
+     * kartu channel dipatok sekitar [CHANNEL_CARD_TARGET_DP] dp, lalu
+     * jumlah kolomnya dibagi dari lebar layar asli (bukan lebar
+     * RecyclerView, karena itu bisa masih 0 sebelum layout pertama) —
+     * minimal 2 kolom biar gak kelewat lebar di HP kecil.
+     */
+    private fun computeChannelSpanCount(): Int {
+        val density = resources.displayMetrics.density
+        val widthPx = if (channelList.width > 0) {
+            channelList.width
+        } else {
+            resources.displayMetrics.widthPixels
+        }
+        val widthDp = widthPx / density
+        val target = (widthDp / CHANNEL_CARD_TARGET_DP).toInt()
+        return target.coerceIn(2, 6)
     }
 
     private lateinit var channelAdapter: ChannelAdapter
@@ -604,12 +645,42 @@ class MainActivity : AppCompatActivity() {
         // tanpa ada yang lihat — matiin dulu.
         pauseChannelListPulses()
 
+        // Kalau lagi di tengah main Tebak Gambar sebelum pindah ke tab TV,
+        // lanjutin lagi. Kalau belum pernah pilih game, biarin nunjukin
+        // menu game (gameMenuContainer default-nya sudah visible).
+        if (isTebakGambarActive) {
+            resumeTebakGambar()
+        }
+    }
+
+    /** Buka layar "Tebak Gambar" dari menu game. */
+    private fun openTebakGambar() {
+        isTebakGambarActive = true
+        gameMenuContainer.visibility = View.GONE
+        tebakGambarContainer.visibility = View.VISIBLE
+        resumeTebakGambar()
+    }
+
+    /** Balik dari layar "Tebak Gambar" ke menu game (bukan ke tab TV). */
+    private fun backToGameMenu() {
+        if (!isTebakGambarActive) return
+        isTebakGambarActive = false
+
+        // Timer dipause (bukan direset) biar kalau user balik lagi ke
+        // Tebak Gambar dari menu, sisa waktunya masih sama.
+        gameCountdown?.cancel()
+
+        tebakGambarContainer.visibility = View.GONE
+        gameMenuContainer.visibility = View.VISIBLE
+    }
+
+    private fun resumeTebakGambar() {
         if (gameItems.isEmpty() && !gameLoading) {
             loadGameBankThenStart()
         } else if (gameCurrentItem == null && gameItems.isNotEmpty()) {
             nextGameImage(reveal = false)
         } else if (gameCurrentItem != null) {
-            // Lanjutin sisa waktu dari sebelum pindah ke tab TV.
+            // Lanjutin sisa waktu dari sebelum pindah tab/menu.
             startGameCountdown(gameRemainingMs)
         }
     }
@@ -626,7 +697,7 @@ class MainActivity : AppCompatActivity() {
                 gameImageLoading.visibility = View.GONE
                 result.onSuccess { items ->
                     gameItems = items
-                    if (isGameTabActive) nextGameImage(reveal = false)
+                    if (isGameTabActive && isTebakGambarActive) nextGameImage(reveal = false)
                 }.onFailure {
                     gameFeedbackText.text = "Gagal memuat soal, coba lagi"
                 }
@@ -996,8 +1067,10 @@ class MainActivity : AppCompatActivity() {
 
         topBar.visibility = View.GONE
         statusBar.visibility = View.GONE
-        filterCard.visibility = View.GONE
-        channelListLabel.visibility = View.GONE
+        searchInput.visibility = View.GONE
+        groupSpinner.visibility = View.GONE
+        previousButton.visibility = View.GONE
+        nextButton.visibility = View.GONE
         retryVisibleBeforeFullscreen =
             retryButton.visibility == View.VISIBLE
         retryButton.visibility = View.GONE
@@ -1018,12 +1091,24 @@ class MainActivity : AppCompatActivity() {
         // beda dengan mode normal yang pakai FIT (letterbox, jaga rasio asli).
         playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
 
+        applyFullscreenSystemBars()
+        // Bug lama: keluar fullscreen lalu masuk lagi kadang gak beneran
+        // fullscreen. Penyebabnya, panggilan hide() di atas kadang keburu
+        // "ke-override" sama relayout yang dipicu perubahan requestedOrientation
+        // barusan (timing-nya beda-beda antar device/OEM). Solusinya: pastikan
+        // ada panggilan ulang setelah layout/orientation pass ini selesai.
+        mainHandler.post { if (isFullscreen) applyFullscreenSystemBars() }
+        mainHandler.postDelayed({ if (isFullscreen) applyFullscreenSystemBars() }, 300L)
+    }
+
+    /** Sembunyikan status bar & navigation bar buat mode fullscreen. */
+    private fun applyFullscreenSystemBars() {
         window.insetsController?.let { controller ->
+            controller.systemBarsBehavior =
+                WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(
                 WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
             )
-            controller.systemBarsBehavior =
-                WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
@@ -1033,8 +1118,10 @@ class MainActivity : AppCompatActivity() {
 
         topBar.visibility = View.VISIBLE
         statusBar.visibility = View.VISIBLE
-        filterCard.visibility = View.VISIBLE
-        channelListLabel.visibility = View.VISIBLE
+        searchInput.visibility = View.VISIBLE
+        groupSpinner.visibility = View.VISIBLE
+        previousButton.visibility = View.VISIBLE
+        nextButton.visibility = View.VISIBLE
         channelList.visibility = View.VISIBLE
         bottomNavBar.visibility = View.VISIBLE
         bottomNavDivider.visibility = View.VISIBLE
@@ -1097,13 +1184,7 @@ class MainActivity : AppCompatActivity() {
         // bikin "keluar-masuk app jadi gak full lagi" — jadi harus disembunyikan
         // ulang manual di sini kalau lagi fullscreen.
         if (isFullscreen) {
-            window.insetsController?.let { controller ->
-                controller.hide(
-                    WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
-                )
-                controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+            applyFullscreenSystemBars()
         }
     }
 
@@ -1113,9 +1194,7 @@ class MainActivity : AppCompatActivity() {
         // benar-benar menerapkan ulang system bar pas window dapat focus lagi,
         // bukan pas onResume.
         if (hasFocus && isFullscreen) {
-            window.insetsController?.hide(
-                WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
-            )
+            applyFullscreenSystemBars()
         }
     }
 
@@ -1151,8 +1230,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Lanjutin timer soal Tebak Gambar kalau app balik dari background
-        // pas lagi di tab Game.
-        if (isGameTabActive && gameCurrentItem != null && gameRemainingMs > 0) {
+        // pas lagi di layar Tebak Gambar (bukan di menu game).
+        if (isGameTabActive && isTebakGambarActive && gameCurrentItem != null && gameRemainingMs > 0) {
             startGameCountdown(gameRemainingMs)
         }
 
@@ -1253,6 +1332,11 @@ class MainActivity : AppCompatActivity() {
 
         // Waktu per soal Tebak Gambar: 60 detik.
         private const val GAME_ROUND_MS = 60_000L
+
+        // Lebar target satu kartu channel (dp). Dipakai buat ngitung jumlah
+        // kolom grid biar konsisten "pas" di HP kecil sampai tablet/foldable,
+        // bukan dipatok 2 kolom buat semua ukuran layar.
+        private const val CHANNEL_CARD_TARGET_DP = 168f
     }
 }
 

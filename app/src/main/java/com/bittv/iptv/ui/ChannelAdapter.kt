@@ -87,6 +87,19 @@ class ChannelAdapter(
         private val favorite: ImageButton = itemView.findViewById(R.id.favoriteButton)
         private var liveAnimator: ObjectAnimator? = null
 
+        init {
+            // Area logo dulu tinggi tetap (94dp) buat semua ukuran layar —
+            // pas grid-nya sekarang bisa 2 s/d 6 kolom tergantung lebar HP,
+            // tinggi tetap itu bikin kartu kegencet di layar sempit atau
+            // keliatan kosong di layar lebar. Dikunci rasio 4:3 sekali di
+            // sini (bukan di XML, RatioFrameLayout belum baca atribut XML)
+            // biar selalu proporsional ke lebar kartunya sendiri.
+            itemView.findViewById<RatioFrameLayout>(R.id.channelLogoFrame).apply {
+                aspectWidth = 4
+                aspectHeight = 3
+            }
+        }
+
         fun bind(channel: Channel) {
             name.text = channel.name
             group.text = channel.group.ifBlank { "Ungrouped" }

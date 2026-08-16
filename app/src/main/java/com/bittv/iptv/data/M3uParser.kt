@@ -108,28 +108,8 @@ object M3uParser {
         }
     }
 
-    // Header names recognized as the START of a new header entry inside a
-    // block like "Referer=...&User-Agent=...". We deliberately do NOT split
-    // on every '&' or '|' character: those are common inside the header
-    // VALUES themselves (e.g. a Referer URL with its own query string like
-    // "?vod=123&token=abc"), and naively splitting on them truncates the
-    // value and injects bogus extra headers (e.g. a fake "token" header).
-    // Splitting only happens right before one of these known names.
-    private val knownHeaderNames = listOf(
-        "referer", "referrer", "user-agent", "origin", "cookie",
-        "authorization", "x-forwarded-for", "accept", "accept-language"
-    )
-
-    private val headerBoundaryRegex = Regex(
-        "(?:^|[&|\\n])(?=(?:" +
-            knownHeaderNames.joinToString("|") { Regex.escape(it) } +
-            ")\\s*=)",
-        RegexOption.IGNORE_CASE
-    )
-
     private fun parseHeaderBlock(value: String): Map<String, String> =
-        headerBoundaryRegex.split(value)
-            .filter { it.isNotBlank() }
+        value.split('&', '|', '\n')
             .mapNotNull { part ->
                 val eq = part.indexOf('=')
                 if (eq <= 0) return@mapNotNull null

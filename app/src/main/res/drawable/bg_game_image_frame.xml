@@ -21,7 +21,7 @@
         android:start="3dp"
         android:end="3dp">
         <shape android:shape="rectangle">
-            <solid android:color="#0F1219" />
+            <solid android:color="@color/bg_root_soft" />
             <corners android:radius="17dp" />
         </shape>
     </item>

@@ -239,7 +239,6 @@
     <!-- Filter card: search + group + prev/next grouped into one elevated block
          instead of three loose rows, so the toolbar reads as a single unit. -->
     <LinearLayout
-        android:id="@+id/filterCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -315,7 +314,6 @@
         android:visibility="gone" />
 
     <TextView
-        android:id="@+id/channelListLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
@@ -350,14 +348,198 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:visibility="gone"
-        android:padding="16dp">
+        android:visibility="gone">
+
+        <!-- Menu game: daftar game yang bisa dipilih. Ini yang tampil duluan
+             pas masuk tab Game. Sekarang baru "Tebak Gambar" yang aktif,
+             sisanya kartu "Segera hadir" biar kelihatan bakal nambah terus. -->
+        <ScrollView
+            android:id="@+id/gameMenuContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    android:text="🎮 PILIH GAME"
+                    android:textColor="@color/game_accent_light"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:letterSpacing="0.06" />
+
+                <LinearLayout
+                    android:id="@+id/gameCardTebakGambar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_button_game"
+                    android:padding="16dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="14dp"
+                        android:text="🖼️"
+                        android:textSize="28sp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Tebak Gambar"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Tebak gambarnya sebelum waktu habis"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:maxLines="1"
+                            android:ellipsize="end" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="›"
+                        android:textColor="@color/game_accent_light"
+                        android:textStyle="bold"
+                        android:textSize="22sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_button_outline"
+                    android:padding="16dp"
+                    android:alpha="0.55">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="14dp"
+                        android:text="🔤"
+                        android:textSize="28sp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Tebak Kata"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Segera hadir"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_button_outline"
+                    android:padding="16dp"
+                    android:alpha="0.55">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="14dp"
+                        android:text="📺"
+                        android:textSize="28sp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Tebak Logo Channel"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Segera hadir"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Layar "Tebak Gambar" -->
+        <LinearLayout
+            android:id="@+id/tebakGambarContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:padding="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/gameBackButton"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_button_outline"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="‹"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:textSize="18sp" />
 
             <TextView
                 android:layout_width="0dp"
@@ -480,6 +662,8 @@
                 android:textAllCaps="false"
                 android:textSize="13sp" />
         </LinearLayout>
+        </LinearLayout>
+        <!-- /tebakGambarContainer -->
     </LinearLayout>
     <!-- /gameContentContainer -->
 

@@ -10,9 +10,10 @@
     android:elevation="2dp"
     android:background="@drawable/bg_channel_selector">
 
-    <FrameLayout
+    <com.bittv.iptv.ui.RatioFrameLayout
+        android:id="@+id/channelLogoFrame"
         android:layout_width="match_parent"
-        android:layout_height="94dp">
+        android:layout_height="wrap_content">
 
         <ImageView
             android:id="@+id/channelLogo"
@@ -43,7 +44,7 @@
             android:scaleType="centerInside"
             android:padding="6dp"
             android:contentDescription="Favorite" />
-    </FrameLayout>
+    </com.bittv.iptv.ui.RatioFrameLayout>
 
     <TextView
         android:id="@+id/channelName"
