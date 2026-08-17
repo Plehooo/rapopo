@@ -42,18 +42,62 @@ jobs:
         run: |
           ./gradlew :app:assembleDebug             --no-daemon             --stacktrace             --console=plain             --max-workers=2
 
-      - name: Verify APK
+      - name: Verify debug APK
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
           ls -lh app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: LIVE-TV-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      # Build APK RELEASE yang ditandatangani (signed) beneran, pakai keystore
+      # yang disimpan sebagai GitHub Secret (RELEASE_KEYSTORE_BASE64) — bukan
+      # di-commit ke repo. Kalau secret belum di-set di repo Settings > Secrets
+      # and variables > Actions, step ini otomatis di-skip (gak bikin build gagal),
+      # jadi aman buat repo yang belum setup release signing sama sekali.
+      - name: Decode release keystore
+        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "${{ runner.temp }}/release.keystore"
+
+      - name: Build signed release APK
+        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleRelease             --no-daemon             --stacktrace             --console=plain             --max-workers=2
+
+      - name: Remove decoded keystore from runner
+        if: ${{ always() }}
+        run: rm -f "${{ runner.temp }}/release.keystore"
+
+      - name: Verify release APK
+        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          test -s app/build/outputs/apk/release/app-release.apk
+          ls -lh app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload signed release APK
+        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: LIVE-TV-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
 
       # BUG FIX: sebelumnya tiap push bikin artifact APK baru (nama beda2
       # per run_number) dengan retention 30 hari, tapi TIDAK PERNAH ada yang
@@ -68,20 +112,23 @@ jobs:
         with:
           script: |
             const keep = 3;
+            const prefixes = ["LIVE-TV-debug-", "LIVE-TV-release-"];
             const { data } = await github.rest.actions.listArtifactsForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               per_page: 100,
             });
-            const apkArtifacts = data.artifacts
-              .filter(a => a.name.startsWith("LIVE-TV-debug-"))
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            const toDelete = apkArtifacts.slice(keep);
-            for (const artifact of toDelete) {
-              console.log(`Deleting old artifact: ${artifact.name} (id ${artifact.id})`);
-              await github.rest.actions.deleteArtifact({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                artifact_id: artifact.id,
-              });
+            for (const prefix of prefixes) {
+              const artifacts = data.artifacts
+                .filter(a => a.name.startsWith(prefix))
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+              const toDelete = artifacts.slice(keep);
+              for (const artifact of toDelete) {
+                console.log(`Deleting old artifact: ${artifact.name} (id ${artifact.id})`);
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+              }
             }

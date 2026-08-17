@@ -40,6 +40,26 @@ android {
             keyAlias 'bittvdebug'
             keyPassword 'android123'
         }
+
+        // BUG FIX (keamanan): sebelumnya cuma ada signingConfig "debug" yang
+        // keystore + passwordnya ke-commit polos ke repo PUBLIC — siapa aja
+        // bisa ambil dan pakai buat nge-sign APK palsu yang ngaku dari app
+        // yang sama. Signing config "release" di bawah ini SENGAJA baca
+        // keystore & password dari environment variable saat build (diisi
+        // dari GitHub Secrets), bukan dari file/teks yang ke-commit. Kalau
+        // env var-nya gak ada (misal lagi build lokal biasa tanpa niat
+        // rilis), signing config ini otomatis gak aktif dan gradle fallback
+        // ke APK unsigned/pakai debug key seperti biasa — gak bikin build
+        // lokal error.
+        release {
+            def ksPath = System.getenv("RELEASE_KEYSTORE_PATH")
+            if (ksPath != null) {
+                storeFile file(ksPath)
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -49,7 +69,13 @@ android {
             versionNameSuffix '-debug'
         }
         release {
-            minifyEnabled false
+            // Cuma pakai signingConfig kalau env var-nya beneran ke-set
+            // (lihat catatan di signingConfigs.release di atas).
+            if (System.getenv("RELEASE_KEYSTORE_PATH") != null) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
