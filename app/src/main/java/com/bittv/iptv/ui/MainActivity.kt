@@ -49,6 +49,7 @@ import com.bittv.iptv.config.AppConfig
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.data.Channel
 import com.bittv.iptv.data.M3uParser
+import com.bittv.iptv.util.AppUpdateChecker
 import com.bittv.iptv.util.EpgParser
 import com.bittv.iptv.util.EpgRepository
 import com.bittv.iptv.util.HeaderParser
