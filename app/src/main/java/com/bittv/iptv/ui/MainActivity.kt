@@ -1267,7 +1267,17 @@ class MainActivity : AppCompatActivity() {
         player?.release()
         player = buildPlayer(channel.headers, channel.streamUrl)
         playerView.player = player
-        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        // BUG FIX: sebelumnya baris ini hardcode ke RESIZE_MODE_FIT, jadi
+        // tiap kali app balik dari background (yang otomatis rebuild player
+        // di sini) tampilan video ikut kereset ke mode kecil/letterbox
+        // WALAUPUN lagi fullscreen (RESIZE_MODE_FILL). Itu penyebab "keluar
+        // masuk app tetep kecil, gak full lagi". Sekarang ngikutin status
+        // fullscreen yang sebenarnya, bukan dihardcode.
+        playerView.resizeMode = if (isFullscreen) {
+            AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
 
         player?.let { attachPlayerListener(it) }
 
