@@ -30,9 +30,15 @@ class AppUpdateWorker(
                     AppUpdateNotification.showReadyToInstall(
                         applicationContext,
                         result.versionName,
-                        result.apkFile
+                        result.apkFile,
+                        result.mandatory
                     )
-                    Result.success(workDataOf("updateAvailable" to true))
+                    Result.success(
+                        workDataOf(
+                            "updateAvailable" to true,
+                            "mandatory" to result.mandatory
+                        )
+                    )
                 }
 
                 is AppUpdateChecker.UpdateResult.UpToDate -> {

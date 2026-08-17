@@ -93,6 +93,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNavBar: View
     private lateinit var bottomNavDivider: View
 
+    // --- Overlay "Update Wajib". Muncul kalau update.json bilang
+    //     mandatory=true dan ada versi lebih baru dari yang terpasang. ---
+    private lateinit var mandatoryUpdateOverlay: View
+    private lateinit var mandatoryUpdateMessage: TextView
+    private lateinit var mandatoryUpdateProgress: TextView
+    private lateinit var mandatoryUpdateButton: Button
+    private var mandatoryUpdateApkFile: java.io.File? = null
+
     // --- Panel Game ("Tebak Gambar"), tampil di layar yang sama, gantiin
     //     panel TV pas tab Game aktif. Soal diambil dari JSON remote. ---
     private lateinit var tvContentContainer: View
@@ -131,6 +139,12 @@ class MainActivity : AppCompatActivity() {
     private var playbackToken = 0L
     private var epgProgrammes = emptyList<com.bittv.iptv.util.EpgProgramme>()
     private var retryVisibleBeforeFullscreen = false
+
+    // BUG FIX: KEY_LAST_CHANNEL sudah lama disimpan di saveHistory() tapi
+    // tidak pernah dibaca ulang, jadi app selalu autoplay channel PERTAMA
+    // di playlist alih-alih channel terakhir yang ditonton user. Nilainya
+    // ditampung di sini pas restoreState(), dipakai sekali pas autoplay awal.
+    private var pendingLastChannelUrl: String? = null
 
     private val prefs by lazy { getSharedPreferences("bittv", MODE_PRIVATE) }
 
@@ -174,6 +188,22 @@ class MainActivity : AppCompatActivity() {
         // The first screen is rendered immediately. Reading/parsing the local M3U
         // happens off the main thread so a large playlist cannot freeze startup.
         mainHandler.post { loadLocalPlaylistAsync() }
+
+        // BUG FIX: sebelumnya status fullscreen cuma disimpan di variabel biasa
+        // (isFullscreen), tidak pernah dipulihkan lewat savedInstanceState.
+        // Di banyak HP (Xiaomi/Oppo/dll yang agresif matiin Activity pas app
+        // di-background), keluar app pas lagi fullscreen lalu balik lagi bikin
+        // Activity dibuat ulang dari nol -> isFullscreen balik ke false ->
+        // tampilan balik ke mode normal (gak lebar/gak fullscreen) padahal
+        // sebelumnya fullscreen. Di sini status fullscreen dipulihkan lagi.
+        if (savedInstanceState?.getBoolean(KEY_WAS_FULLSCREEN, false) == true) {
+            mainHandler.post { enterFullscreen() }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_WAS_FULLSCREEN, isFullscreen)
     }
 
     private fun bindViews() {
@@ -198,6 +228,11 @@ class MainActivity : AppCompatActivity() {
         bottomNavGameLabel = findViewById(R.id.bottomNavGameLabel)
         bottomNavBar = findViewById(R.id.bottomNavBar)
         bottomNavDivider = findViewById(R.id.bottomNavDivider)
+
+        mandatoryUpdateOverlay = findViewById(R.id.mandatoryUpdateOverlay)
+        mandatoryUpdateMessage = findViewById(R.id.mandatoryUpdateMessage)
+        mandatoryUpdateProgress = findViewById(R.id.mandatoryUpdateProgress)
+        mandatoryUpdateButton = findViewById(R.id.mandatoryUpdateButton)
 
         tvContentContainer = findViewById(R.id.tvContentContainer)
         gameContentContainer = findViewById(R.id.gameContentContainer)
@@ -267,6 +302,10 @@ class MainActivity : AppCompatActivity() {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     when {
+                        mandatoryUpdateOverlay.visibility == View.VISIBLE -> {
+                            // Update wajib: back ditelan, tidak boleh keluar
+                            // dari layar ini selain lewat tombol update.
+                        }
                         isFullscreen -> exitFullscreen()
                         isGameTabActive -> showTvTab()
                         else -> {
@@ -285,6 +324,41 @@ class MainActivity : AppCompatActivity() {
         AppUpdateWorker.schedule(this)
         EpgUpdateWorker.schedule(this)
         FreeNotificationWorker.schedule(this)
+        checkMandatoryUpdateOnLaunch()
+    }
+
+    /**
+     * Cek langsung (tanpa nunggu jadwal periodic worker) tiap kali app
+     * dibuka: kalau update.json bilang mandatory=true dan ada versi baru,
+     * tampilkan overlay "Update Wajib" yang gak bisa ditutup selain lewat
+     * tombol update. Update biasa (mandatory=false) tetap ditangani oleh
+     * AppUpdateWorker lewat notifikasi seperti biasa, tidak diganggu di sini.
+     */
+    private fun checkMandatoryUpdateOnLaunch() {
+        backgroundExecutor.execute {
+            val result = kotlinx.coroutines.runBlocking {
+                AppUpdateChecker.checkAndDownload(this@MainActivity)
+            }
+            mainHandler.post {
+                if (isFinishing || isDestroyed) return@post
+                if (result is AppUpdateChecker.UpdateResult.Available && result.mandatory) {
+                    showMandatoryUpdateOverlay(result.versionName, result.apkFile)
+                }
+            }
+        }
+    }
+
+    private fun showMandatoryUpdateOverlay(versionName: String, apkFile: java.io.File) {
+        mandatoryUpdateApkFile = apkFile
+        mandatoryUpdateMessage.text =
+            "Versi $versionName wajib dipasang untuk melanjutkan pakai aplikasi ini."
+        mandatoryUpdateProgress.text = "Update sudah siap diunduh, tap tombol di bawah."
+        mandatoryUpdateButton.setOnClickListener {
+            val file = mandatoryUpdateApkFile ?: return@setOnClickListener
+            startActivity(AppUpdateChecker.installIntent(this, file))
+        }
+        mandatoryUpdateOverlay.visibility = View.VISIBLE
+        mandatoryUpdateOverlay.bringToFront()
     }
 
     private fun loadLocalPlaylistAsync() {
@@ -350,9 +424,11 @@ class MainActivity : AppCompatActivity() {
                 playerContainer.visibility = View.VISIBLE
 
                 /*
-                 * Autoplay channel paling atas.
-                 * Delay kecil memberi kesempatan layout selesai sehingga
-                 * PlayerView tidak terlihat seperti blank hitam saat startup.
+                 * Autoplay channel terakhir yang ditonton (kalau masih ada
+                 * di playlist), kalau tidak ada baru fallback ke channel
+                 * paling atas. Delay kecil memberi kesempatan layout selesai
+                 * sehingga PlayerView tidak terlihat seperti blank hitam
+                 * saat startup.
                  */
                 mainHandler.postDelayed({
                     if (!isFinishing &&
@@ -360,8 +436,11 @@ class MainActivity : AppCompatActivity() {
                         startupComplete &&
                         activeChannel == null
                     ) {
+                        val resumeChannel = pendingLastChannelUrl
+                            ?.let { url -> parsed.firstOrNull { it.streamUrl == url } }
+                            ?: parsed.first()
                         playChannel(
-                            parsed.first(),
+                            resumeChannel,
                             isRetry = false,
                             saveAsLast = true
                         )
@@ -979,6 +1058,7 @@ class MainActivity : AppCompatActivity() {
             ?.lineSequence()
             ?.filter { it.isNotBlank() }
             ?.forEach(history::addLast)
+        pendingLastChannelUrl = prefs.getString(KEY_LAST_CHANNEL, null)
     }
 
     private fun toggleFullscreen() {
@@ -1241,6 +1321,7 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_LAST_CHANNEL = "last_channel"
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
+        private const val KEY_WAS_FULLSCREEN = "was_fullscreen"
 
         // Banyak server IPTV/CDN nge-block request yang bukan dari browser
         // (User-Agent kosong/khas library kayak "ExoPlayerLib" gampang kena

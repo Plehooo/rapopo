@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   build:
@@ -52,4 +53,35 @@ jobs:
           name: LIVE-TV-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+
+      # BUG FIX: sebelumnya tiap push bikin artifact APK baru (nama beda2
+      # per run_number) dengan retention 30 hari, tapi TIDAK PERNAH ada yang
+      # menghapus artifact lama. Jadi tiap kali push, storage Actions di
+      # GitHub numpuk terus (makin lama makin banyak APK ~11MB nyangkut),
+      # sampai akhirnya kena limit kuota storage repo. Step ini otomatis
+      # hapus artifact lama, cuma nyisain 3 build terbaru, tiap kali ada
+      # build baru sukses — jadi storage tetap stabil, gak numpuk terus.
+      - name: Cleanup old APK artifacts
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const keep = 3;
+            const { data } = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const apkArtifacts = data.artifacts
+              .filter(a => a.name.startsWith("LIVE-TV-debug-"))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const toDelete = apkArtifacts.slice(keep);
+            for (const artifact of toDelete) {
+              console.log(`Deleting old artifact: ${artifact.name} (id ${artifact.id})`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }

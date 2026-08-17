@@ -30,7 +30,7 @@ object AppUpdateNotification {
         }
     }
 
-    fun showReadyToInstall(context: Context, versionName: String, apkFile: File) {
+    fun showReadyToInstall(context: Context, versionName: String, apkFile: File, mandatory: Boolean = false) {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -49,11 +49,17 @@ object AppUpdateNotification {
             .setSmallIcon(R.drawable.ic_app_logo)
             .setLargeIcon(NotificationBranding.largeIcon(context))
             .setColor(NotificationBranding.accentColor(context))
-            .setContentTitle("Update tersedia — v$versionName")
-            .setContentText("Ketuk untuk memasang versi terbaru")
+            .setContentTitle(
+                if (mandatory) "Update WAJIB — v$versionName" else "Update tersedia — v$versionName"
+            )
+            .setContentText(
+                if (mandatory) "Wajib dipasang untuk lanjut pakai aplikasi. Ketuk untuk update."
+                else "Ketuk untuk memasang versi terbaru"
+            )
             .setSubText("LIVE TV")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
+            .setAutoCancel(!mandatory)
+            .setOngoing(mandatory)
             .setContentIntent(pendingIntent)
             .build()
 

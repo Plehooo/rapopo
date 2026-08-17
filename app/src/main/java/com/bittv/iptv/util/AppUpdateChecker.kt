@@ -24,13 +24,22 @@ import java.net.URL
  *      "versionCode": 31,
  *      "versionName": "3.0.1",
  *      "apkUrl": "https://github.com/<user>/<repo>/releases/download/v3.0.1/app-release.apk",
- *      "notes": "Perbaikan tampilan channel"
+ *      "notes": "Perbaikan tampilan channel",
+ *      "mandatory": false
  *    }
  * 2. Ganti UPDATE_MANIFEST_URL di bawah sesuai repo kamu.
  * 3. Tiap kali mau rilis versi baru: naikkan versionCode di app/build.gradle,
  *    build APK, upload ke GitHub Releases, terus update update.json (versionCode,
  *    versionName, apkUrl). App akan otomatis nawarin update ke user, TANPA perlu
  *    user cari/download APK manual — cukup tap "Install" saat notifikasi muncul.
+ *
+ * Field "mandatory" (opsional, default false):
+ *    - false / tidak ada -> update biasa, cuma notifikasi, user boleh skip.
+ *    - true               -> update WAJIB. App nampilin layar penuh "Update
+ *                            Wajib" yang tidak bisa ditutup/di-skip; user
+ *                            cuma bisa tap "Update Sekarang". App baru bisa
+ *                            dipakai lagi setelah user beneran install versi
+ *                            baru (dan buka ulang app-nya).
  *
  * Catatan: Android tetap mewajibkan konfirmasi tap "Install" dari user untuk
  * app pihak ketiga (ini proteksi keamanan sistem, tidak bisa dilewati) — tapi
@@ -44,7 +53,8 @@ object AppUpdateChecker {
     sealed class UpdateResult {
         data class Available(
             val versionName: String,
-            val apkFile: File
+            val apkFile: File,
+            val mandatory: Boolean
         ) : UpdateResult()
 
         object UpToDate : UpdateResult()
@@ -60,6 +70,7 @@ object AppUpdateChecker {
                 val remoteVersionCode = manifest.getInt("versionCode")
                 val apkUrl = manifest.getString("apkUrl")
                 val versionName = manifest.optString("versionName", "")
+                val mandatory = manifest.optBoolean("mandatory", false)
 
                 val currentVersionCode = BuildConfig.VERSION_CODE
 
@@ -68,7 +79,7 @@ object AppUpdateChecker {
                 }
 
                 val apkFile = downloadApk(context, apkUrl)
-                UpdateResult.Available(versionName, apkFile)
+                UpdateResult.Available(versionName, apkFile, mandatory)
             } catch (e: Exception) {
                 UpdateResult.Failed(e)
             }
