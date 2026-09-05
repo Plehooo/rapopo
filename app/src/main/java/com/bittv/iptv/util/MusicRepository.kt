@@ -43,10 +43,11 @@ object MusicRepository {
 
     /** Panggil dari background thread. */
     fun search(query: String): Result<List<MusicTrack>> = runCatching {
-        val raw = httpGet(SEARCH_URL + encode(query))
+        val raw = httpGetOrThrowDetailed(SEARCH_URL + encode(query))
         val root = parseJsonObjectOrThrow(raw)
         if (!root.optBoolean("status", false)) {
-            throw IllegalStateException("Pencarian gagal")
+            val serverMsg = root.optString("message").ifBlank { root.optString("creator") }
+            throw IllegalStateException("API_STATUS_FALSE: ${serverMsg.ifBlank { "tidak ada pesan" }}")
         }
         val array = root.optJSONArray("result") ?: JSONArray()
         val items = ArrayList<MusicTrack>(array.length())
@@ -63,21 +64,24 @@ object MusicRepository {
                 sourceUrl = link
             )
         }
-        if (items.isEmpty()) throw IllegalStateException("Lagu tidak ditemukan")
+        if (items.isEmpty()) {
+            throw IllegalStateException("EMPTY_RESULT: server balikin ${array.length()} item mentah tapi 0 yang valid")
+        }
         items
     }
 
     /** Panggil dari background thread. [titleOrQuery] idealnya judul persis dari hasil search. */
     fun resolvePlayable(titleOrQuery: String): Result<PlayableTrack> = runCatching {
-        val raw = httpGet(RESOLVE_URL + encode(titleOrQuery))
+        val raw = httpGetOrThrowDetailed(RESOLVE_URL + encode(titleOrQuery))
         val root = parseJsonObjectOrThrow(raw)
         if (!root.optBoolean("status", false)) {
-            throw IllegalStateException("Lagu tidak bisa diputar")
+            val serverMsg = root.optString("message").ifBlank { root.optString("creator") }
+            throw IllegalStateException("API_STATUS_FALSE: ${serverMsg.ifBlank { "tidak ada pesan" }}")
         }
         val result = root.optJSONObject("result")
-            ?: throw IllegalStateException("Respons kosong")
+            ?: throw IllegalStateException("EMPTY_RESULT: field result kosong")
         val mp3 = result.optString("mp3").trim()
-        if (mp3.isBlank()) throw IllegalStateException("Link audio tidak tersedia")
+        if (mp3.isBlank()) throw IllegalStateException("EMPTY_RESULT: field mp3 kosong")
 
         PlayableTrack(
             title = result.optString("title").trim().ifBlank { titleOrQuery },
@@ -96,7 +100,16 @@ object MusicRepository {
      */
     private fun parseJsonObjectOrThrow(raw: String): JSONObject {
         return runCatching { JSONObject(raw) }.getOrElse {
-            throw IllegalStateException("SERVER_BLOCKED")
+            val preview = raw.trim().take(80).replace("\n", " ")
+            throw IllegalStateException("SERVER_BLOCKED: responsnya bukan JSON -> \"$preview\"")
+        }
+    }
+
+    private fun httpGetOrThrowDetailed(url: String): String {
+        return try {
+            httpGet(url)
+        } catch (e: Exception) {
+            throw IllegalStateException("NETWORK_ERROR: ${e.javaClass.simpleName} ${e.message ?: ""}")
         }
     }
 
@@ -115,6 +128,16 @@ object MusicRepository {
         )
         connection.setRequestProperty("Accept", "application/json, text/plain, */*")
         connection.setRequestProperty("Referer", "https://api-faa.my.id/")
+
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val errBody = runCatching {
+                connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            }.getOrNull().orEmpty().take(80)
+            connection.disconnect()
+            throw IllegalStateException("HTTP_ERROR: kode $code -> \"$errBody\"")
+        }
+
         return try {
             connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         } finally {
