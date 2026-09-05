@@ -292,13 +292,17 @@
             android:paddingStart="14dp"
             android:paddingEnd="14dp" />
 
-        <!-- Mode Hemat Data: batasi bitrate video ke ~2 Mbps biar kuota irit. -->
+        <!-- Mode Hemat Data: batasi bitrate video, dipilih dari beberapa level (2 Mbps s/d Kbps terkecil). -->
         <LinearLayout
+            android:id="@+id/dataSaverRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
             android:paddingStart="4dp"
             android:paddingEnd="4dp"
             android:paddingTop="6dp"
@@ -322,15 +326,19 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
-                    android:text="Batasi kualitas video ~2 Mbps"
+                    android:text="Pilih batas kualitas video"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
             </LinearLayout>
 
-            <Switch
-                android:id="@+id/dataSaverSwitch"
+            <TextView
+                android:id="@+id/dataSaverValueText"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:text="Nonaktif ▾"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <LinearLayout
