@@ -143,8 +143,9 @@ class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
-    private var isDataSaverEnabled: Boolean = false
-    private lateinit var dataSaverSwitch: android.widget.Switch
+    private var dataSaverMaxBitrateBps: Int = 0
+    private lateinit var dataSaverRow: android.view.View
+    private lateinit var dataSaverValueText: android.widget.TextView
     private var activeChannel: Channel? = null
     private var automaticRetries = 0
     private var currentFilter = "All"
@@ -252,12 +253,9 @@ class MainActivity : AppCompatActivity() {
         bottomNavBar = findViewById(R.id.bottomNavBar)
         bottomNavDivider = findViewById(R.id.bottomNavDivider)
 
-        dataSaverSwitch = findViewById(R.id.dataSaverSwitch)
-        dataSaverSwitch.setOnCheckedChangeListener { _, isChecked ->
-            isDataSaverEnabled = isChecked
-            prefs.edit().putBoolean(KEY_DATA_SAVER, isChecked).apply()
-            applyDataSaverToTrackSelector()
-        }
+        dataSaverRow = findViewById(R.id.dataSaverRow)
+        dataSaverValueText = findViewById(R.id.dataSaverValueText)
+        dataSaverRow.setOnClickListener { showDataSaverMenu() }
 
         mandatoryUpdateOverlay = findViewById(R.id.mandatoryUpdateOverlay)
         mandatoryUpdateMessage = findViewById(R.id.mandatoryUpdateMessage)
@@ -975,13 +973,13 @@ class MainActivity : AppCompatActivity() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
-        // Mode "Hemat Data": batasi bitrate video maksimum ke ~2 Mbps biar
-        // kuota lebih irit. trackSelector dipegang di field biar bisa
-        // di-toggle langsung dari Switch tanpa perlu ganti channel dulu.
+        // Mode "Hemat Data": batasi bitrate video maksimum sesuai level yang
+        // dipilih user (2 Mbps s/d 150 Kbps). trackSelector dipegang di field
+        // biar bisa di-ganti levelnya langsung tanpa perlu ganti channel dulu.
         val newTrackSelector = DefaultTrackSelector(this)
         val paramsBuilder = newTrackSelector.buildUponParameters()
-        if (isDataSaverEnabled) {
-            paramsBuilder.setMaxVideoBitrate(DATA_SAVER_MAX_BITRATE_BPS)
+        if (dataSaverMaxBitrateBps > 0) {
+            paramsBuilder.setMaxVideoBitrate(dataSaverMaxBitrateBps)
         }
         newTrackSelector.setParameters(paramsBuilder)
         trackSelector = newTrackSelector
@@ -1181,20 +1179,44 @@ class MainActivity : AppCompatActivity() {
             ?.forEach(history::addLast)
         pendingLastChannelUrl = prefs.getString(KEY_LAST_CHANNEL, null)
 
-        isDataSaverEnabled = prefs.getBoolean(KEY_DATA_SAVER, false)
-        dataSaverSwitch.isChecked = isDataSaverEnabled
+        dataSaverMaxBitrateBps = prefs.getInt(KEY_DATA_SAVER, 0)
+        updateDataSaverLabel()
     }
 
-    /** Terapkan batas bitrate video (mode Hemat Data ~2 Mbps) ke player yang lagi jalan. */
+    /** Terapkan batas bitrate video (mode Hemat Data, level dipilih user) ke player yang lagi jalan. */
     private fun applyDataSaverToTrackSelector() {
         val selector = trackSelector ?: return
         val builder = selector.buildUponParameters()
-        if (isDataSaverEnabled) {
-            builder.setMaxVideoBitrate(DATA_SAVER_MAX_BITRATE_BPS)
+        if (dataSaverMaxBitrateBps > 0) {
+            builder.setMaxVideoBitrate(dataSaverMaxBitrateBps)
         } else {
             builder.setMaxVideoBitrate(Int.MAX_VALUE)
         }
         selector.setParameters(builder)
+    }
+
+    /** Tampilkan menu pilihan level batas bitrate, dari "Nonaktif" sampe yang paling kecil (Kbps). */
+    private fun showDataSaverMenu() {
+        val popup = android.widget.PopupMenu(this, dataSaverValueText)
+        DATA_SAVER_LEVELS.forEachIndexed { index, level ->
+            popup.menu.add(0, index, index, level.label)
+        }
+        popup.setOnMenuItemClickListener { item ->
+            val level = DATA_SAVER_LEVELS.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+            dataSaverMaxBitrateBps = level.bitrateBps
+            prefs.edit().putInt(KEY_DATA_SAVER, level.bitrateBps).apply()
+            updateDataSaverLabel()
+            applyDataSaverToTrackSelector()
+            true
+        }
+        popup.show()
+    }
+
+    /** Update teks label sesuai level Hemat Data yang lagi aktif. */
+    private fun updateDataSaverLabel() {
+        val level = DATA_SAVER_LEVELS.firstOrNull { it.bitrateBps == dataSaverMaxBitrateBps }
+            ?: DATA_SAVER_LEVELS.first()
+        dataSaverValueText.text = "${level.label} ▾"
     }
 
     private fun toggleFullscreen() {
@@ -1473,10 +1495,23 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_WAS_FULLSCREEN = "was_fullscreen"
-        private const val KEY_DATA_SAVER = "data_saver_enabled"
+        // Sekarang nyimpen level bitrate terpilih (bps), bukan cuma on/off lagi.
+        private const val KEY_DATA_SAVER = "data_saver_max_bitrate_bps"
 
-        // Batas bitrate video mode "Hemat Data" — 2 Mbps (bit per detik).
-        private const val DATA_SAVER_MAX_BITRATE_BPS = 2_000_000
+        /** Satu opsi level batas bitrate video buat mode "Hemat Data". */
+        private data class DataSaverLevel(val label: String, val bitrateBps: Int)
+
+        // Daftar pilihan batas bitrate, dari nonaktif sampe yang paling kecil (Kbps).
+        // bitrateBps = 0 artinya nonaktif (gak ada batas / kualitas tertinggi).
+        private val DATA_SAVER_LEVELS = listOf(
+            DataSaverLevel("Nonaktif", 0),
+            DataSaverLevel("2 Mbps", 2_000_000),
+            DataSaverLevel("1 Mbps", 1_000_000),
+            DataSaverLevel("700 Kbps", 700_000),
+            DataSaverLevel("500 Kbps", 500_000),
+            DataSaverLevel("300 Kbps", 300_000),
+            DataSaverLevel("150 Kbps", 150_000)
+        )
 
         // Banyak server IPTV/CDN nge-block request yang bukan dari browser
         // (User-Agent kosong/khas library kayak "ExoPlayerLib" gampang kena
