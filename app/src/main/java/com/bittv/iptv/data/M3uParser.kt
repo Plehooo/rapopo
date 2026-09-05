@@ -13,6 +13,16 @@ object M3uParser {
         val result = ArrayList<Channel>()
         var pending: Pending? = null
         var pendingHeaders = defaultHeaders.toMutableMap()
+        // BUG FIX: channel yang butuh DRM ClearKey (ditandai lewat baris
+        // "#KODIPROP:" ala Kodi/inputstream.adaptive) dulu diam-diam kena
+        // cabang generik `line.startsWith("#") -> Unit` di bawah, jadi
+        // info license-nya hilang total tanpa keterangan — channel-nya
+        // nanti gagal play tanpa alasan yang jelas ke user. Sekarang
+        // dua propertinya (license_type & license_key) ditangkap di sini,
+        // sama seperti pendingHeaders, lalu ditempel ke Channel yang
+        // dihasilkan.
+        var pendingDrmScheme: String? = null
+        var pendingDrmLicenseKey: String? = null
         var generatedId = 0
 
         for (rawLine in text.lineSequence()) {
@@ -28,6 +38,13 @@ object M3uParser {
                 }
                 line.startsWith("#EXTGRP:", ignoreCase = true) -> {
                     pending = pending?.copy(group = line.substringAfter(':').trim().ifBlank { "Ungrouped" })
+                }
+                line.startsWith("#KODIPROP:", ignoreCase = true) -> {
+                    val (key, value) = parseKodiProp(line.substringAfter(':')) ?: (null to null)
+                    when (key) {
+                        "inputstream.adaptive.license_type" -> pendingDrmScheme = value
+                        "inputstream.adaptive.license_key" -> pendingDrmLicenseKey = value
+                    }
                 }
                 line.startsWith("#") -> Unit
                 else -> {
@@ -48,10 +65,14 @@ object M3uParser {
                         streamUrl = url,
                         headers = headers,
                         epgId = p?.epgId,
-                        country = p?.country
+                        country = p?.country,
+                        drmScheme = pendingDrmScheme?.trim()?.takeIf { it.isNotBlank() },
+                        drmLicenseKey = pendingDrmLicenseKey?.trim()?.takeIf { it.isNotBlank() }
                     )
                     pending = null
                     pendingHeaders = defaultHeaders.toMutableMap()
+                    pendingDrmScheme = null
+                    pendingDrmLicenseKey = null
                 }
             }
         }
@@ -106,6 +127,15 @@ object M3uParser {
             "http-origin" -> mapOf("Origin" to v)
             else -> emptyMap()
         }
+    }
+
+    private fun parseKodiProp(value: String): Pair<String, String>? {
+        val eq = value.indexOf('=')
+        if (eq <= 0) return null
+        val key = value.substring(0, eq).trim().lowercase()
+        val v = value.substring(eq + 1).trim()
+        if (key.isBlank() || v.isBlank()) return null
+        return key to v
     }
 
     private fun parseHeaderBlock(value: String): Map<String, String> =
