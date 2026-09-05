@@ -44,7 +44,7 @@ object MusicRepository {
     /** Panggil dari background thread. */
     fun search(query: String): Result<List<MusicTrack>> = runCatching {
         val raw = httpGet(SEARCH_URL + encode(query))
-        val root = JSONObject(raw)
+        val root = parseJsonObjectOrThrow(raw)
         if (!root.optBoolean("status", false)) {
             throw IllegalStateException("Pencarian gagal")
         }
@@ -70,7 +70,7 @@ object MusicRepository {
     /** Panggil dari background thread. [titleOrQuery] idealnya judul persis dari hasil search. */
     fun resolvePlayable(titleOrQuery: String): Result<PlayableTrack> = runCatching {
         val raw = httpGet(RESOLVE_URL + encode(titleOrQuery))
-        val root = JSONObject(raw)
+        val root = parseJsonObjectOrThrow(raw)
         if (!root.optBoolean("status", false)) {
             throw IllegalStateException("Lagu tidak bisa diputar")
         }
@@ -88,13 +88,33 @@ object MusicRepository {
         )
     }
 
+    /**
+     * Parse body jadi JSONObject. Kalau gagal, kemungkinan besar server BUKAN
+     * balikin JSON (misal halaman blokir/challenge dari proteksi anti-bot,
+     * atau rate-limit) — dilempar sebagai error yang beda biar kelihatan di
+     * pesan UI kalau ini masalah server, bukan "lagu gak ada".
+     */
+    private fun parseJsonObjectOrThrow(raw: String): JSONObject {
+        return runCatching { JSONObject(raw) }.getOrElse {
+            throw IllegalStateException("SERVER_BLOCKED")
+        }
+    }
+
     private fun httpGet(url: String): String {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = TIMEOUT_MS
         connection.readTimeout = TIMEOUT_MS
         connection.instanceFollowRedirects = true
         connection.requestMethod = "GET"
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android BITTV)")
+        // User-Agent browser asli (Chrome Android) — API musik ini kelihatannya
+        // punya proteksi anti-bot yang nolak User-Agent generik/palsu.
+        connection.setRequestProperty(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 13; SM-A125F) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        )
+        connection.setRequestProperty("Accept", "application/json, text/plain, */*")
+        connection.setRequestProperty("Referer", "https://api-faa.my.id/")
         return try {
             connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         } finally {
