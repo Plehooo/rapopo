@@ -348,8 +348,6 @@ class MainActivity : AppCompatActivity() {
             isSearch
         }
         musicPlayPauseButton.setOnClickListener { toggleMusicPlayPause() }
-
-        connectMusicController()
     }
 
     /**
@@ -794,6 +792,12 @@ class MainActivity : AppCompatActivity() {
     private fun openMusic() {
         gameMenuContainer.visibility = View.GONE
         musicContainer.visibility = View.VISIBLE
+        // Baru konek ke MusicPlayerService pas beneran dibuka user (lazy) —
+        // biar kalau ada masalah binding ke service, cuma fitur Musik yang
+        // kena, gak nge-freeze seluruh app pas pertama kali dibuka.
+        if (mediaController == null && mediaControllerFuture == null) {
+            connectMusicController()
+        }
     }
 
     /** Balik dari layar "Musik" ke menu pilih game. Lagu TETAP lanjut muter
@@ -805,19 +809,27 @@ class MainActivity : AppCompatActivity() {
 
     /** Hubungin MediaController ke MusicPlayerService yang jalan di background. */
     private fun connectMusicController() {
-        val sessionToken = SessionToken(this, ComponentName(this, MusicPlayerService::class.java))
-        val future = MediaController.Builder(this, sessionToken).buildAsync()
-        mediaControllerFuture = future
-        future.addListener({
-            val controller = runCatching { future.get() }.getOrNull() ?: return@addListener
-            mediaController = controller
-            controller.addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    musicPlayPauseButton.text = if (isPlaying) "⏸" else "▶"
+        runCatching {
+            val sessionToken = SessionToken(this, ComponentName(this, MusicPlayerService::class.java))
+            val future = MediaController.Builder(this, sessionToken).buildAsync()
+            mediaControllerFuture = future
+            future.addListener({
+                val controller = runCatching { future.get() }.getOrNull()
+                if (controller == null) {
+                    musicFeedbackText.text = "Player musik gagal disiapkan, coba tutup-buka lagi."
+                    return@addListener
                 }
-            })
-            musicPlayPauseButton.text = if (controller.isPlaying) "⏸" else "▶"
-        }, MoreExecutors.directExecutor())
+                mediaController = controller
+                controller.addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        musicPlayPauseButton.text = if (isPlaying) "⏸" else "▶"
+                    }
+                })
+                musicPlayPauseButton.text = if (controller.isPlaying) "⏸" else "▶"
+            }, MoreExecutors.directExecutor())
+        }.onFailure {
+            musicFeedbackText.text = "Player musik gagal disiapkan, coba tutup-buka lagi."
+        }
     }
 
     /** Cari lagu berdasarkan teks di kolom search, tampilin hasilnya di list. */
