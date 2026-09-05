@@ -6,6 +6,7 @@ import com.bittv.iptv.data.M3uParser
 import com.bittv.iptv.data.PlaylistDiff
 import com.bittv.iptv.data.PlaylistDiffCalculator
 import com.bittv.iptv.data.PlaylistSnapshot
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -39,9 +40,6 @@ class PlaylistRepository(
             Context.MODE_PRIVATE
         )
 
-    @Volatile
-    private var memorySnapshot: PlaylistSnapshot? = null
-
     /**
      * Remote-only playlist loading.
      *
@@ -59,7 +57,6 @@ class PlaylistRepository(
      * itself is never persisted.
      */
     fun checkForUpdate(): PlaylistUpdateResult {
-        val previousMemory = memorySnapshot
         val previousFingerprint =
             statePrefs.getString(KEY_FINGERPRINT, null)
 
@@ -79,15 +76,6 @@ class PlaylistRepository(
                 )
             }
 
-            val oldChannels = previousMemory?.let { snapshot ->
-                runCatching {
-                    M3uParser.parse(
-                        snapshot.content,
-                        config.playlistUrl
-                    )
-                }.getOrDefault(emptyList())
-            } ?: emptyList()
-
             val newChannels = runCatching {
                 M3uParser.parse(
                     fetched.content,
@@ -101,21 +89,21 @@ class PlaylistRepository(
                 )
             }
 
-            val diff = if (oldChannels.isNotEmpty()) {
-                PlaylistDiffCalculator.compare(
-                    oldChannels,
-                    newChannels
-                )
-            } else {
-                // Background workers intentionally do not retain the whole
-                // previous M3U. A generic update notification is still emitted.
-                PlaylistDiff(
-                    added = 0,
-                    removed = 0,
-                    changed = 0,
-                    unchanged = newChannels.size
-                )
-            }
+            // BUG FIX: dulu diff dihitung dari `memorySnapshot`, field in-memory
+            // biasa yang selalu null tiap kali PlaylistRepository dibuat ulang
+            // (persis yang terjadi setiap PlaylistUpdateWorker/EpgUpdateWorker
+            // jalan, dan juga tiap app di-kill lalu dibuka lagi). Akibatnya diff
+            // selalu jatuh ke cabang generik di bawah -> notifikasi selalu bilang
+            // "ada update" tanpa angka pasti channel yang ditambah/dihapus.
+            //
+            // Sekarang index ringan (stableKey -> hash channel) disimpan di
+            // SharedPreferences, bertahan lintas proses/instance, jadi diff
+            // selalu dihitung dari data run sebelumnya yang beneran ada.
+            val oldIndex = loadChannelIndex()
+            val (diff, newIndex) = PlaylistDiffCalculator.compareIndex(
+                oldIndex,
+                newChannels
+            )
 
             val oldRevision =
                 statePrefs.getLong(KEY_REVISION, 0L)
@@ -133,8 +121,7 @@ class PlaylistRepository(
                 .putString(KEY_LAST_MODIFIED, snapshot.lastModified)
                 .putLong(KEY_REVISION, newRevision)
                 .apply()
-
-            memorySnapshot = snapshot
+            saveChannelIndex(newIndex)
 
             PlaylistUpdateResult.Updated(
                 snapshot = snapshot,
@@ -145,6 +132,26 @@ class PlaylistRepository(
         } catch (t: Throwable) {
             PlaylistUpdateResult.Failed(t)
         }
+    }
+
+    private fun loadChannelIndex(): Map<String, String> {
+        val raw = statePrefs.getString(KEY_CHANNEL_INDEX, null) ?: return emptyMap()
+        return runCatching {
+            val obj = JSONObject(raw)
+            val map = LinkedHashMap<String, String>(obj.length())
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                map[key] = obj.getString(key)
+            }
+            map
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun saveChannelIndex(index: Map<String, String>) {
+        val obj = JSONObject()
+        index.forEach { (key, hash) -> obj.put(key, hash) }
+        statePrefs.edit().putString(KEY_CHANNEL_INDEX, obj.toString()).apply()
     }
 
     private fun fetchRemote(): Result<PlaylistSnapshot> {
@@ -267,5 +274,6 @@ class PlaylistRepository(
         private const val KEY_ETAG = "etag"
         private const val KEY_LAST_MODIFIED = "last_modified"
         private const val KEY_REVISION = "revision"
+        private const val KEY_CHANNEL_INDEX = "channel_index"
     }
 }
