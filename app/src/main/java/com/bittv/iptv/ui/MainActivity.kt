@@ -85,6 +85,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchInput: EditText
     private lateinit var previousButton: Button
     private lateinit var nextButton: Button
+    private lateinit var filterMenuButton: View
+    private lateinit var filterCard: View
     private lateinit var topBar: View
     private lateinit var statusBar: View
     private lateinit var startupOverlay: View
@@ -231,6 +233,14 @@ class MainActivity : AppCompatActivity() {
         searchInput = findViewById(R.id.searchInput)
         previousButton = findViewById(R.id.previousButton)
         nextButton = findViewById(R.id.nextButton)
+
+        // BUG FIX: tombol "⋯" (filterMenuButton) buat buka panel filter
+        // (grup channel, prev/next, dan sekarang switch Hemat Data) gak
+        // pernah di-wire ke kode, jadi diklik gak ngefek sama sekali —
+        // panel filterCard-nya juga gak pernah keluar dari GONE.
+        filterMenuButton = findViewById(R.id.filterMenuButton)
+        filterCard = findViewById(R.id.filterCard)
+        filterMenuButton.setOnClickListener { toggleFilterCard() }
         bottomNavTv = findViewById(R.id.bottomNavTv)
         bottomNavGame = findViewById(R.id.bottomNavGame)
         bottomNavTvLabel = findViewById(R.id.bottomNavTvLabel)
@@ -738,6 +748,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Fade halus antar panel TV/Game, biar berasa gonta-ganti tab, bukan lompat kasar. */
+    /** Buka/tutup panel filter (grup channel + prev/next + Hemat Data) pas tombol "⋯" diklik. */
+    private fun toggleFilterCard() {
+        if (filterCard.visibility == View.VISIBLE) {
+            filterCard.visibility = View.GONE
+        } else {
+            filterCard.visibility = View.VISIBLE
+        }
+    }
+
     private fun crossFadeSwap(from: View, to: View) {
         from.animate()
             .alpha(0f)
