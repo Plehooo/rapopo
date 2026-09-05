@@ -39,6 +39,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -106,6 +107,10 @@ class MainActivity : AppCompatActivity() {
     //     panel TV pas tab Game aktif. Soal diambil dari JSON remote. ---
     private lateinit var tvContentContainer: View
     private lateinit var gameContentContainer: View
+    private lateinit var gameMenuContainer: View
+    private lateinit var gameCardTebakGambar: View
+    private lateinit var tebakGambarContainer: View
+    private lateinit var gameBackButton: View
     private lateinit var gameFeedbackText: TextView
     private lateinit var gameScoreText: TextView
     private lateinit var gameTimerText: TextView
@@ -131,6 +136,9 @@ class MainActivity : AppCompatActivity() {
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     private var player: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
+    private var isDataSaverEnabled: Boolean = false
+    private lateinit var dataSaverSwitch: android.widget.Switch
     private var activeChannel: Channel? = null
     private var automaticRetries = 0
     private var currentFilter = "All"
@@ -230,6 +238,13 @@ class MainActivity : AppCompatActivity() {
         bottomNavBar = findViewById(R.id.bottomNavBar)
         bottomNavDivider = findViewById(R.id.bottomNavDivider)
 
+        dataSaverSwitch = findViewById(R.id.dataSaverSwitch)
+        dataSaverSwitch.setOnCheckedChangeListener { _, isChecked ->
+            isDataSaverEnabled = isChecked
+            prefs.edit().putBoolean(KEY_DATA_SAVER, isChecked).apply()
+            applyDataSaverToTrackSelector()
+        }
+
         mandatoryUpdateOverlay = findViewById(R.id.mandatoryUpdateOverlay)
         mandatoryUpdateMessage = findViewById(R.id.mandatoryUpdateMessage)
         mandatoryUpdateProgress = findViewById(R.id.mandatoryUpdateProgress)
@@ -237,12 +252,22 @@ class MainActivity : AppCompatActivity() {
 
         tvContentContainer = findViewById(R.id.tvContentContainer)
         gameContentContainer = findViewById(R.id.gameContentContainer)
+        gameMenuContainer = findViewById(R.id.gameMenuContainer)
+        gameCardTebakGambar = findViewById(R.id.gameCardTebakGambar)
+        tebakGambarContainer = findViewById(R.id.tebakGambarContainer)
+        gameBackButton = findViewById(R.id.gameBackButton)
         gameFeedbackText = findViewById(R.id.gameFeedbackText)
         gameScoreText = findViewById(R.id.gameScoreText)
         gameTimerText = findViewById(R.id.gameTimerText)
         gameImageView = findViewById(R.id.gameImageView)
         gameImageLoading = findViewById(R.id.gameImageLoading)
         gameAnswerInput = findViewById(R.id.gameAnswerInput)
+
+        // BUG FIX: kartu "Tebak Gambar" dan tombol back di menu game gak pernah
+        // di-wire ke kode sama sekali, jadi diklik gak ngapa-ngapain (menu game
+        // tampil tapi layar game beneran-nya ketutup terus, GONE).
+        gameCardTebakGambar.setOnClickListener { openTebakGambar() }
+        gameBackButton.setOnClickListener { closeTebakGambar() }
 
         findViewById<Button>(R.id.gameSkipButton).setOnClickListener { nextGameImage(reveal = true) }
         findViewById<Button>(R.id.gameSubmitButton).setOnClickListener { checkGameAnswer() }
@@ -556,7 +581,7 @@ class MainActivity : AppCompatActivity() {
             isSelected = { activeChannel?.streamUrl == it.streamUrl }
         )
         this.channelAdapter = adapter
-        channelList.layoutManager = GridLayoutManager(this, 2)
+        channelList.layoutManager = GridLayoutManager(this, 1)
         channelList.adapter = adapter
         channelList.setHasFixedSize(false)
         channelList.clipToPadding = false
@@ -662,14 +687,34 @@ class MainActivity : AppCompatActivity() {
         // tanpa ada yang lihat — matiin dulu.
         pauseChannelListPulses()
 
+        // Kalau user sebelumnya lagi di tengah main "Tebak Gambar" (bukan di
+        // menu pilih game), lanjutin lagi timernya. Kalau masih di menu,
+        // biarin di menu — jangan langsung nyelonong ke game.
+        if (tebakGambarContainer.visibility == View.VISIBLE && gameCurrentItem != null) {
+            startGameCountdown(gameRemainingMs)
+        }
+    }
+
+    /** Buka layar "Tebak Gambar" beneran, gantiin menu pilih game. */
+    private fun openTebakGambar() {
+        gameMenuContainer.visibility = View.GONE
+        tebakGambarContainer.visibility = View.VISIBLE
+
         if (gameItems.isEmpty() && !gameLoading) {
             loadGameBankThenStart()
         } else if (gameCurrentItem == null && gameItems.isNotEmpty()) {
             nextGameImage(reveal = false)
         } else if (gameCurrentItem != null) {
-            // Lanjutin sisa waktu dari sebelum pindah ke tab TV.
+            // Lanjutin sisa waktu dari sebelumnya.
             startGameCountdown(gameRemainingMs)
         }
+    }
+
+    /** Balik dari layar "Tebak Gambar" ke menu pilih game. */
+    private fun closeTebakGambar() {
+        gameCountdown?.cancel()
+        tebakGambarContainer.visibility = View.GONE
+        gameMenuContainer.visibility = View.VISIBLE
     }
 
     private fun loadGameBankThenStart() {
@@ -882,9 +927,21 @@ class MainActivity : AppCompatActivity() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
+        // Mode "Hemat Data": batasi bitrate video maksimum ke ~2 Mbps biar
+        // kuota lebih irit. trackSelector dipegang di field biar bisa
+        // di-toggle langsung dari Switch tanpa perlu ganti channel dulu.
+        val newTrackSelector = DefaultTrackSelector(this)
+        val paramsBuilder = newTrackSelector.buildUponParameters()
+        if (isDataSaverEnabled) {
+            paramsBuilder.setMaxVideoBitrate(DATA_SAVER_MAX_BITRATE_BPS)
+        }
+        newTrackSelector.setParameters(paramsBuilder)
+        trackSelector = newTrackSelector
+
         return ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
+            .setTrackSelector(newTrackSelector)
             .setAudioAttributes(audioAttributes, true)
             .build()
             .also { it.volume = 1f }
@@ -1060,6 +1117,21 @@ class MainActivity : AppCompatActivity() {
             ?.filter { it.isNotBlank() }
             ?.forEach(history::addLast)
         pendingLastChannelUrl = prefs.getString(KEY_LAST_CHANNEL, null)
+
+        isDataSaverEnabled = prefs.getBoolean(KEY_DATA_SAVER, false)
+        dataSaverSwitch.isChecked = isDataSaverEnabled
+    }
+
+    /** Terapkan batas bitrate video (mode Hemat Data ~2 Mbps) ke player yang lagi jalan. */
+    private fun applyDataSaverToTrackSelector() {
+        val selector = trackSelector ?: return
+        val builder = selector.buildUponParameters()
+        if (isDataSaverEnabled) {
+            builder.setMaxVideoBitrate(DATA_SAVER_MAX_BITRATE_BPS)
+        } else {
+            builder.setMaxVideoBitrate(Int.MAX_VALUE)
+        }
+        selector.setParameters(builder)
     }
 
     private fun toggleFullscreen() {
@@ -1333,6 +1405,10 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_WAS_FULLSCREEN = "was_fullscreen"
+        private const val KEY_DATA_SAVER = "data_saver_enabled"
+
+        // Batas bitrate video mode "Hemat Data" — 2 Mbps (bit per detik).
+        private const val DATA_SAVER_MAX_BITRATE_BPS = 2_000_000
 
         // Banyak server IPTV/CDN nge-block request yang bukan dari browser
         // (User-Agent kosong/khas library kayak "ExoPlayerLib" gampang kena
