@@ -39,6 +39,9 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -51,6 +54,7 @@ import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.data.Channel
 import com.bittv.iptv.data.M3uParser
 import com.bittv.iptv.util.AppUpdateChecker
+import com.bittv.iptv.util.ClearKeyUtil
 import com.bittv.iptv.util.EpgParser
 import com.bittv.iptv.util.EpgRepository
 import com.bittv.iptv.util.HeaderParser
@@ -907,7 +911,12 @@ class MainActivity : AppCompatActivity() {
         channelAdapter.submitList(sorted)
     }
 
-    private fun buildPlayer(headers: Map<String, String>, streamUrl: String = ""): ExoPlayer {
+    private fun buildPlayer(
+        headers: Map<String, String>,
+        streamUrl: String = "",
+        drmScheme: String? = null,
+        drmLicenseKey: String? = null
+    ): ExoPlayer {
         // Default nyamar sebagai browser desktop dulu; kalau channel di
         // playlist punya header sendiri (misal lewat #EXTVLCOPT), itu yang
         // menang, dipasang belakangan lewat putAll().
@@ -935,6 +944,26 @@ class MainActivity : AppCompatActivity() {
 
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
+        // BUG FIX: channel yang butuh proteksi ClearKey (ditandai lewat
+        // "#KODIPROP:" di M3U, lihat M3uParser) dulu diam-diam diabaikan
+        // total — parser buang infonya, player gak pernah tau harus
+        // decrypt pakai key apa, jadi channel-nya gagal play tanpa
+        // keterangan jelas kenapa. Sekarang, kalau channel punya
+        // drmScheme=clearkey + drmLicenseKey yang valid, MediaSourceFactory
+        // dipasangin DrmSessionManager lokal (LocalMediaDrmCallback) yang
+        // "menjawab" permintaan lisensi langsung dari kid/key di
+        // playlist — tanpa perlu hit server lisensi manapun, sesuai
+        // sifat ClearKey yang memang biasa dipakai offline/inline begini.
+        if (ClearKeyUtil.isClearKey(drmScheme) && !drmLicenseKey.isNullOrBlank()) {
+            val licenseJson = ClearKeyUtil.buildLicenseJson(drmLicenseKey)
+            if (licenseJson != null) {
+                val drmSessionManager = DefaultDrmSessionManager.Builder()
+                    .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+                    .build(LocalMediaDrmCallback(licenseJson.toByteArray(Charsets.UTF_8)))
+                mediaSourceFactory.setDrmSessionManagerProvider { drmSessionManager }
+            }
+        }
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(3_000, 15_000, 500, 1_500)
@@ -1066,10 +1095,25 @@ class MainActivity : AppCompatActivity() {
         runCatching { old?.release() }
         playerView.player = null
 
-        val newPlayer = buildPlayer(channel.headers, channel.streamUrl)
+        val newPlayer = buildPlayer(
+            channel.headers,
+            channel.streamUrl,
+            channel.drmScheme,
+            channel.drmLicenseKey
+        )
         player = newPlayer
         playerView.player = newPlayer
-        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        // BUG FIX: sebelumnya baris ini hardcode ke RESIZE_MODE_FIT, jadi
+        // tiap kali ganti channel (tombol prev/next, retry, atau tap
+        // channel lain) pas lagi fullscreen, tampilan video ikut kereset
+        // ke mode kecil/letterbox walaupun status fullscreen (FILL) belum
+        // berubah. Sekarang ngikutin status fullscreen yang sebenarnya,
+        // sama seperti di reconnectActiveChannel().
+        playerView.resizeMode = if (isFullscreen) {
+            AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
         attachPlayerListener(newPlayer)
 
         val cleanUrl = channel.streamUrl.substringBefore('#')
@@ -1356,7 +1400,12 @@ class MainActivity : AppCompatActivity() {
          * connection/manifest live stream sudah stale.
          */
         player?.release()
-        player = buildPlayer(channel.headers, channel.streamUrl)
+        player = buildPlayer(
+            channel.headers,
+            channel.streamUrl,
+            channel.drmScheme,
+            channel.drmLicenseKey
+        )
         playerView.player = player
         // BUG FIX: sebelumnya baris ini hardcode ke RESIZE_MODE_FIT, jadi
         // tiap kali app balik dari background (yang otomatis rebuild player
