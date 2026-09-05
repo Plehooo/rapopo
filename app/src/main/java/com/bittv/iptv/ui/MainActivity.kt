@@ -851,11 +851,7 @@ class MainActivity : AppCompatActivity() {
                     musicAdapter.submitList(tracks)
                     musicFeedbackText.text = "Ditemukan ${tracks.size} lagu. Tap buat muter."
                 }.onFailure {
-                    musicFeedbackText.text = if (it.message == "SERVER_BLOCKED") {
-                        "Server musik lagi nolak request (kemungkinan proteksi anti-bot), coba lagi sebentar lagi."
-                    } else {
-                        "Lagu gak ketemu, coba judul lain."
-                    }
+                    musicFeedbackText.text = "Gagal: ${it.message ?: it.javaClass.simpleName}"
                 }
             }
         }
@@ -896,11 +892,7 @@ class MainActivity : AppCompatActivity() {
                     musicPlayerTitle.text = playable.title
                     LogoLoader.load(playable.thumbnailUrl.ifBlank { track.thumbnailUrl }, musicPlayerThumbnail)
                 }.onFailure {
-                    musicFeedbackText.text = if (it.message == "SERVER_BLOCKED") {
-                        "Server musik lagi nolak request (kemungkinan proteksi anti-bot), coba lagi sebentar lagi."
-                    } else {
-                        "Lagu \"${track.title}\" gagal diputar, coba lagu lain."
-                    }
+                    musicFeedbackText.text = "Gagal muter: ${it.message ?: it.javaClass.simpleName}"
                 }
             }
         }
