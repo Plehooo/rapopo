@@ -1,6 +1,7 @@
 package com.bittv.iptv.ui
 
 import android.Manifest
+import android.content.ComponentName
 import android.animation.ObjectAnimator
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -31,6 +32,7 @@ import androidx.core.view.updatePadding
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -44,21 +46,26 @@ import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bittv.iptv.R
 import com.bittv.iptv.config.AppConfig
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.data.Channel
 import com.bittv.iptv.data.M3uParser
+import com.bittv.iptv.service.MusicPlayerService
 import com.bittv.iptv.util.AppUpdateChecker
 import com.bittv.iptv.util.ClearKeyUtil
 import com.bittv.iptv.util.EpgParser
 import com.bittv.iptv.util.EpgRepository
 import com.bittv.iptv.util.HeaderParser
 import com.bittv.iptv.util.LogoLoader
+import com.bittv.iptv.util.MusicRepository
 import com.bittv.iptv.util.PlaylistNotification
 import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
@@ -67,6 +74,8 @@ import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
 import com.bittv.iptv.worker.FreeNotificationWorker
 import com.bittv.iptv.worker.PlaylistUpdateWorker
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -132,6 +141,27 @@ class MainActivity : AppCompatActivity() {
     private var gameCountdown: CountDownTimer? = null
     private var gameRemainingMs: Long = GAME_ROUND_MS
     private var gameLoading = false
+
+    // --- Fitur Musik: search + putar lagu lewat MusicPlayerService, biar
+    //     bisa lanjut muter di background kayak Spotify (beda dari video TV
+    //     yang emang sengaja berhenti kalau gak di tab TV). ---
+    private lateinit var gameCardMusik: View
+    private lateinit var musicContainer: View
+    private lateinit var musicBackButton: View
+    private lateinit var musicSearchInput: EditText
+    private lateinit var musicSearchButton: Button
+    private lateinit var musicFeedbackText: TextView
+    private lateinit var musicResultsList: RecyclerView
+    private lateinit var musicLoading: android.widget.ProgressBar
+    private lateinit var musicPlayerBar: View
+    private lateinit var musicPlayerThumbnail: android.widget.ImageView
+    private lateinit var musicPlayerTitle: TextView
+    private lateinit var musicPlayPauseButton: TextView
+    private lateinit var musicAdapter: MusicAdapter
+    private var musicSearching = false
+    private var musicResolving = false
+    private var mediaControllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaController: MediaController? = null
 
 
 
@@ -289,6 +319,37 @@ class MainActivity : AppCompatActivity() {
             if (isDone) checkGameAnswer()
             isDone
         }
+
+        // --- Wiring fitur Musik ---
+        gameCardMusik = findViewById(R.id.gameCardMusik)
+        musicContainer = findViewById(R.id.musicContainer)
+        musicBackButton = findViewById(R.id.musicBackButton)
+        musicSearchInput = findViewById(R.id.musicSearchInput)
+        musicSearchButton = findViewById(R.id.musicSearchButton)
+        musicFeedbackText = findViewById(R.id.musicFeedbackText)
+        musicResultsList = findViewById(R.id.musicResultsList)
+        musicLoading = findViewById(R.id.musicLoading)
+        musicPlayerBar = findViewById(R.id.musicPlayerBar)
+        musicPlayerThumbnail = findViewById(R.id.musicPlayerThumbnail)
+        musicPlayerTitle = findViewById(R.id.musicPlayerTitle)
+        musicPlayPauseButton = findViewById(R.id.musicPlayPauseButton)
+
+        musicAdapter = MusicAdapter { track -> playMusicTrack(track) }
+        musicResultsList.layoutManager = LinearLayoutManager(this)
+        musicResultsList.adapter = musicAdapter
+
+        gameCardMusik.setOnClickListener { openMusic() }
+        musicBackButton.setOnClickListener { closeMusic() }
+        musicSearchButton.setOnClickListener { performMusicSearch() }
+        musicSearchInput.setOnEditorActionListener { _, actionId, event ->
+            val isSearch = actionId == EditorInfo.IME_ACTION_SEARCH ||
+                (event != null && event.keyCode == KeyEvent.KEYCODE_ENTER)
+            if (isSearch) performMusicSearch()
+            isSearch
+        }
+        musicPlayPauseButton.setOnClickListener { toggleMusicPlayPause() }
+
+        connectMusicController()
     }
 
     /**
@@ -727,6 +788,108 @@ class MainActivity : AppCompatActivity() {
         gameCountdown?.cancel()
         tebakGambarContainer.visibility = View.GONE
         gameMenuContainer.visibility = View.VISIBLE
+    }
+
+    /** Buka layar "Musik", gantiin menu pilih game. */
+    private fun openMusic() {
+        gameMenuContainer.visibility = View.GONE
+        musicContainer.visibility = View.VISIBLE
+    }
+
+    /** Balik dari layar "Musik" ke menu pilih game. Lagu TETAP lanjut muter
+     *  di background lewat MusicPlayerService — cuma layar search-nya yang ditutup. */
+    private fun closeMusic() {
+        musicContainer.visibility = View.GONE
+        gameMenuContainer.visibility = View.VISIBLE
+    }
+
+    /** Hubungin MediaController ke MusicPlayerService yang jalan di background. */
+    private fun connectMusicController() {
+        val sessionToken = SessionToken(this, ComponentName(this, MusicPlayerService::class.java))
+        val future = MediaController.Builder(this, sessionToken).buildAsync()
+        mediaControllerFuture = future
+        future.addListener({
+            val controller = runCatching { future.get() }.getOrNull() ?: return@addListener
+            mediaController = controller
+            controller.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    musicPlayPauseButton.text = if (isPlaying) "⏸" else "▶"
+                }
+            })
+            musicPlayPauseButton.text = if (controller.isPlaying) "⏸" else "▶"
+        }, MoreExecutors.directExecutor())
+    }
+
+    /** Cari lagu berdasarkan teks di kolom search, tampilin hasilnya di list. */
+    private fun performMusicSearch() {
+        val query = musicSearchInput.text?.toString()?.trim().orEmpty()
+        if (query.isBlank() || musicSearching) return
+
+        musicSearching = true
+        musicLoading.visibility = View.VISIBLE
+        musicFeedbackText.text = "Mencari \"$query\"..."
+        musicAdapter.submitList(emptyList())
+
+        backgroundExecutor.execute {
+            val result = MusicRepository.search(query)
+            mainHandler.post {
+                musicSearching = false
+                musicLoading.visibility = View.GONE
+                result.onSuccess { tracks ->
+                    musicAdapter.submitList(tracks)
+                    musicFeedbackText.text = "Ditemukan ${tracks.size} lagu. Tap buat muter."
+                }.onFailure {
+                    musicFeedbackText.text = "Lagu gak ketemu, coba judul lain."
+                }
+            }
+        }
+    }
+
+    /** Ambil link mp3 buat lagu yang dipilih, terus langsung muterin lewat MusicPlayerService. */
+    private fun playMusicTrack(track: MusicRepository.MusicTrack) {
+        if (musicResolving) return
+        musicResolving = true
+        musicFeedbackText.text = "Menyiapkan \"${track.title}\"..."
+        musicLoading.visibility = View.VISIBLE
+
+        backgroundExecutor.execute {
+            val result = MusicRepository.resolvePlayable(track.title)
+            mainHandler.post {
+                musicResolving = false
+                musicLoading.visibility = View.GONE
+                result.onSuccess { playable ->
+                    musicFeedbackText.text = "Ditemukan ${musicAdapter.itemCount} lagu. Tap buat muter."
+
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(playable.mp3Url)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(playable.title)
+                                .setArtist(playable.author)
+                                .build()
+                        )
+                        .build()
+
+                    mediaController?.apply {
+                        setMediaItem(mediaItem)
+                        prepare()
+                        play()
+                    }
+
+                    musicPlayerBar.visibility = View.VISIBLE
+                    musicPlayerTitle.text = playable.title
+                    LogoLoader.load(playable.thumbnailUrl.ifBlank { track.thumbnailUrl }, musicPlayerThumbnail)
+                }.onFailure {
+                    musicFeedbackText.text = "Lagu \"${track.title}\" gagal diputar, coba lagu lain."
+                }
+            }
+        }
+    }
+
+    /** Toggle play/pause lagu yang lagi aktif di mini player. */
+    private fun toggleMusicPlayPause() {
+        val controller = mediaController ?: return
+        if (controller.isPlaying) controller.pause() else controller.play()
     }
 
     private fun loadGameBankThenStart() {
@@ -1486,6 +1649,14 @@ class MainActivity : AppCompatActivity() {
         runCatching { old?.release() }
         playerView.player = null
         epgRepository.shutdown()
+
+        // Cuma lepas KONEKSI controller-nya, bukan matiin service musiknya —
+        // MusicPlayerService tetap jalan sendiri di background kalau lagi
+        // playing (persis kayak Spotify pas app-nya ditutup).
+        mediaControllerFuture?.let { MediaController.releaseFuture(it) }
+        mediaControllerFuture = null
+        mediaController = null
+
         super.onDestroy()
     }
 
