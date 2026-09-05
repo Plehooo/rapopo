@@ -503,6 +503,59 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/gameCardMusik"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_button_game"
+                    android:padding="16dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="14dp"
+                        android:text="🎵"
+                        android:textSize="28sp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Musik"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Cari dan putar lagu favoritmu"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:maxLines="1"
+                            android:ellipsize="end" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="›"
+                        android:textColor="@color/game_accent_light"
+                        android:textStyle="bold"
+                        android:textSize="22sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
@@ -737,6 +790,162 @@
         </LinearLayout>
         </LinearLayout>
         <!-- /tebakGambarContainer -->
+
+        <!-- Layar "Musik": search lagu, list hasil, mini player bar di bawah.
+             Diputer lewat MusicPlayerService (Media3 MediaSessionService) —
+             beda dari player TV, ini tetap lanjut muter walau app diminimize. -->
+        <LinearLayout
+            android:id="@+id/musicContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/musicBackButton"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_button_outline"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="‹"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🎵 MUSIK"
+                    android:textColor="@color/game_accent_light"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:letterSpacing="0.06" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/musicSearchInput"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_input"
+                    android:hint="Cari judul lagu..."
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:singleLine="true"
+                    android:imeOptions="actionSearch"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_tertiary"
+                    android:textCursorDrawable="@null" />
+
+                <Button
+                    android:id="@+id/musicSearchButton"
+                    android:layout_width="72dp"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_button_game"
+                    android:textColor="@color/text_primary"
+                    android:text="Cari"
+                    android:textAllCaps="false"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/musicFeedbackText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="Ketik judul lagu, terus tekan Cari."
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="4dp">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/musicResultsList"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:paddingTop="6dp" />
+
+                <ProgressBar
+                    android:id="@+id/musicLoading"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:indeterminateTint="@color/game_accent_light"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+            <!-- Mini player: nempel di bawah, muncul begitu ada lagu yang lagi diputar/dimuat. -->
+            <LinearLayout
+                android:id="@+id/musicPlayerBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_button_game"
+                android:padding="10dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/musicPlayerThumbnail"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:scaleType="centerCrop"
+                    android:background="@drawable/bg_input"
+                    android:contentDescription="Sampul lagu" />
+
+                <TextView
+                    android:id="@+id/musicPlayerTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/musicPlayPauseButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button_outline"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="▶"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <!-- /musicContainer -->
     </LinearLayout>
     <!-- /gameContentContainer -->
 
