@@ -1,19 +1,12 @@
 package com.bittv.iptv.config
 
 import android.content.Context
-import android.util.Base64
-import org.json.JSONObject
-import java.nio.charset.StandardCharsets
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 data class AppConfig(
     val appName: String,
     val producer: String,
     val version: String,
     val playlistUrl: String,
-    val playlistAsset: String,
     val foregroundCheckSeconds: Long,
     val backgroundCheckMinutes: Long,
     val firstBackgroundDelaySeconds: Long,
@@ -25,51 +18,33 @@ data class AppConfig(
 )
 
 object ConfigStore {
-    // This key only obfuscates configuration at rest inside the APK.
-    // It is NOT a secure secret store because any APK can ultimately be inspected.
-    private const val KEY_PART_A = "HCeJRBc8HO0YUAp/XFYmr7"
-    private const val KEY_PART_B = "Ui4ZrirIrhVHlPiPUmPMk="
-
-    @Volatile
-    private var cached: AppConfig? = null
-
-    fun load(context: Context): AppConfig {
-        cached?.let { return it }
-        synchronized(this) {
-            cached?.let { return it }
-            val encoded = context.assets.open("config.json.enc").bufferedReader().use { it.readText().trim() }
-            val decoded = decrypt(encoded)
-            val json = JSONObject(decoded)
-            val app = json.getJSONObject("app")
-            val update = json.getJSONObject("update")
-            val cache = json.getJSONObject("cache")
-            val features = json.getJSONObject("features")
-            return AppConfig(
-                appName = app.optString("name", "LIVE TV"),
-                producer = app.optString("by", "ADITIYA"),
-                version = app.optString("version", "3.0.0"),
-                playlistUrl = app.getString("playlistUrl"),
-                playlistAsset = app.optString("playlistAsset", "dhanytv.m3u"),
-                foregroundCheckSeconds = update.optLong("foregroundCheckSeconds", 60L).coerceAtLeast(30L),
-                backgroundCheckMinutes = update.optLong("backgroundCheckMinutes", 15L).coerceAtLeast(15L),
-                firstBackgroundDelaySeconds = update.optLong("firstBackgroundDelaySeconds", 10L).coerceAtLeast(5L),
-                maxPlaylistBytes = cache.optLong("maxBytes", 8L * 1024L * 1024L),
-                minimumChannels = cache.optInt("minimumChannels", 1).coerceAtLeast(1),
-                notificationsEnabled = update.optBoolean("notifyOnChange", true) && features.optBoolean("notifications", true),
-                autoUpdateEnabled = update.optBoolean("enabled", true) && features.optBoolean("autoUpdate", true),
-                useConditionalHttp = update.optBoolean("useConditionalHttp", true)
-            ).also { cached = it }
-        }
-    }
-
-    private fun decrypt(payload: String): String {
-        val parts = payload.split(':', limit = 2)
-        require(parts.size == 2) { "Invalid encrypted config" }
-        val iv = Base64.decode(parts[0], Base64.DEFAULT)
-        val ciphertext = Base64.decode(parts[1], Base64.DEFAULT)
-        val key = Base64.decode(KEY_PART_A + KEY_PART_B, Base64.DEFAULT)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
-    }
+    // Dulu konfigurasi ini disimpan di assets/config.json.enc, dienkripsi
+    // AES-GCM dengan key yang ikut ditanam di kode (lihat riwayat git kalau
+    // butuh). Itu cuma obfuscation, BUKAN proteksi beneran — siapa pun yang
+    // extract APK-nya (apktool/jadx) bakal nemu key-nya juga di kelas ini,
+    // karena app perlu bisa mendekripsinya sendiri saat runtime. Itu batasan
+    // fundamental semua "secret" yang ditanam di client, bukan soal kuat-
+    // lemahnya algoritma enkripsi.
+    //
+    // Sekarang nilainya langsung jadi konstanta Kotlin, dikompilasi ke DEX,
+    // dan ikut di-obfuscate/di-shrink oleh R8 pas build release (minifyEnabled
+    // sudah aktif di app/build.gradle). Gak ada lagi file config.json.enc
+    // yang keliatan jelas namanya di dalam APK dan bisa langsung didekripsi
+    // manual di luar app — harus bongkar bytecode dulu buat nemu nilainya.
+    // Playlist bawaan offline (dhanytv.m3u) juga sudah gak dipakai lagi;
+    // app ini remote-only.
+    fun load(context: Context): AppConfig = AppConfig(
+        appName = "LIVE TV",
+        producer = "ADITIYA",
+        version = "3.0.0",
+        playlistUrl = "https://raw.githubusercontent.com/Plehooo/ditz/refs/heads/main/adit.m3u",
+        foregroundCheckSeconds = 60L,
+        backgroundCheckMinutes = 15L,
+        firstBackgroundDelaySeconds = 10L,
+        maxPlaylistBytes = 8L * 1024L * 1024L,
+        minimumChannels = 1,
+        notificationsEnabled = true,
+        autoUpdateEnabled = true,
+        useConditionalHttp = true
+    )
 }
