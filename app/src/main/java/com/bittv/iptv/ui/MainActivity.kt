@@ -3,6 +3,7 @@ package com.bittv.iptv.ui
 import android.Manifest
 import android.content.ComponentName
 import android.animation.ObjectAnimator
+import android.content.res.Configuration
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -648,6 +649,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Lebar target 1 kartu channel (item_channel.xml didesain sebagai row
+    // lebar, bukan kotak grid kecil). Di bawah ambang ini tetap 1 kolom
+    // (semua HP normal, sesuai desain aslinya) — baru nambah kolom kalau
+    // layar cukup lebar (tablet, HP layar lebar, mode split-screen).
+    private fun calculateSpanCount(): Int {
+        val widthDp = resources.configuration.screenWidthDp
+        val targetColumnWidthDp = 380
+        return (widthDp / targetColumnWidthDp).coerceAtLeast(1)
+    }
+
     private fun setupList() {
         val adapter = ChannelAdapter(
             onChannelClick = { channel -> playChannel(channel, isRetry = false, saveAsLast = true) },
@@ -656,10 +667,22 @@ class MainActivity : AppCompatActivity() {
             isSelected = { activeChannel?.streamUrl == it.streamUrl }
         )
         this.channelAdapter = adapter
-        channelList.layoutManager = GridLayoutManager(this, 1)
+        channelList.layoutManager = GridLayoutManager(this, calculateSpanCount())
         channelList.adapter = adapter
         channelList.setHasFixedSize(false)
         channelList.clipToPadding = false
+    }
+
+    // MainActivity dipertahankan hidup saat rotasi/resize (lihat
+    // android:configChanges di manifest), jadi span count grid perlu
+    // dihitung ulang manual di sini — kalau tidak, HP yang di-rotate atau
+    // di-resize (mode split-screen/foldable) bakal "nyangkut" di jumlah
+    // kolom lama sampai app dibuka ulang.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::channelList.isInitialized) {
+            (channelList.layoutManager as? GridLayoutManager)?.spanCount = calculateSpanCount()
+        }
     }
 
     private lateinit var channelAdapter: ChannelAdapter
