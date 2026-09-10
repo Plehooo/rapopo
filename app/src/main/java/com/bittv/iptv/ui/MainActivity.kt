@@ -71,6 +71,7 @@ import com.bittv.iptv.util.PlaylistNotification
 import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
 import com.bittv.iptv.util.TebakGambarRepository
+import com.bittv.iptv.util.ThrottlingDataSource
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
 import com.bittv.iptv.worker.FreeNotificationWorker
@@ -1142,7 +1143,14 @@ class MainActivity : AppCompatActivity() {
 
         requestHeaders["User-Agent"]?.let { httpFactory.setUserAgent(it) }
 
-        val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
+        val baseDataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
+        // setMaxVideoBitrate() di trackSelector (bawah) cuma manjur buat
+        // stream adaptive. ThrottlingDataSource nahan byte-nya langsung di
+        // level jaringan, jadi Hemat Data beneran ngaruh ke channel
+        // non-adaptive (satu kualitas doang) juga — konversi bps -> byte/s.
+        val dataSourceFactory = ThrottlingDataSource.Factory(baseDataSourceFactory) {
+            if (dataSaverMaxBitrateBps > 0) (dataSaverMaxBitrateBps / 8).toLong() else 0L
+        }
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
         // BUG FIX: channel yang butuh proteksi ClearKey (ditandai lewat
