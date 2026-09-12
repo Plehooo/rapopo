@@ -132,7 +132,6 @@ class PlaylistUpdateWorker(
                     .setRequiredNetworkType(
                         NetworkType.CONNECTED
                     )
-                    .setRequiresBatteryNotLow(true)
                     .build()
 
             val periodic =
@@ -150,7 +149,7 @@ class PlaylistUpdateWorker(
                 .getInstance(context)
                 .enqueueUniquePeriodicWork(
                     PERIODIC_NAME,
-                    ExistingPeriodicWorkPolicy.UPDATE,
+                    ExistingPeriodicWorkPolicy.KEEP,
                     periodic
                 )
 
