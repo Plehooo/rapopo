@@ -164,6 +164,7 @@ class MainActivity : AppCompatActivity() {
     private var musicResolving = false
     private var mediaControllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
+    private var pendingMusicMediaItem: MediaItem? = null
 
 
 
@@ -837,6 +838,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Hubungin MediaController ke MusicPlayerService yang jalan di background. */
     private fun connectMusicController() {
+        if (mediaController != null || mediaControllerFuture != null) return
         runCatching {
             val sessionToken = SessionToken(this, ComponentName(this, MusicPlayerService::class.java))
             val future = MediaController.Builder(this, sessionToken).buildAsync()
@@ -844,7 +846,8 @@ class MainActivity : AppCompatActivity() {
             future.addListener({
                 val controller = runCatching { future.get() }.getOrNull()
                 if (controller == null) {
-                    musicFeedbackText.text = "Player musik gagal disiapkan, coba tutup-buka lagi."
+                    mediaControllerFuture = null
+                    musicFeedbackText.text = "Player musik gagal disiapkan, coba lagi."
                     return@addListener
                 }
                 mediaController = controller
@@ -852,11 +855,33 @@ class MainActivity : AppCompatActivity() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         musicPlayPauseButton.text = if (isPlaying) "⏸" else "▶"
                     }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_READY && controller.isPlaying) {
+                            musicPlayPauseButton.text = "⏸"
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        musicFeedbackText.text = "Gagal memutar: ${error.errorCodeName}"
+                        musicLoading.visibility = View.GONE
+                    }
                 })
+
+                // Kalau user sempat menekan lagu sebelum MediaController selesai
+                // tersambung, jangan hilangkan perintah play. Jalankan sekarang.
+                pendingMusicMediaItem?.let { queuedItem ->
+                    pendingMusicMediaItem = null
+                    controller.setMediaItem(queuedItem)
+                    controller.prepare()
+                    controller.play()
+                }
+
                 musicPlayPauseButton.text = if (controller.isPlaying) "⏸" else "▶"
             }, MoreExecutors.directExecutor())
         }.onFailure {
-            musicFeedbackText.text = "Player musik gagal disiapkan, coba tutup-buka lagi."
+            mediaControllerFuture = null
+            musicFeedbackText.text = "Player musik gagal disiapkan, coba lagi."
         }
     }
 
@@ -910,10 +935,16 @@ class MainActivity : AppCompatActivity() {
                         )
                         .build()
 
-                    mediaController?.apply {
-                        setMediaItem(mediaItem)
-                        prepare()
-                        play()
+                    val controller = mediaController
+                    if (controller != null) {
+                        controller.setMediaItem(mediaItem)
+                        controller.prepare()
+                        controller.play()
+                    } else {
+                        // Controller masih dalam proses binding. Simpan item supaya
+                        // perintah play dieksekusi begitu service siap.
+                        pendingMusicMediaItem = mediaItem
+                        musicFeedbackText.text = "Player musik sedang disiapkan..."
                     }
 
                     musicPlayerBar.visibility = View.VISIBLE
