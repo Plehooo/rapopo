@@ -341,11 +341,8 @@ class MainActivity : AppCompatActivity() {
         musicResultsList.layoutManager = LinearLayoutManager(this)
         musicResultsList.adapter = musicAdapter
 
-        // Kartu "Musik" sekarang placeholder "Segera hadir" (non-klik) — fitur
-        // ditunda karena API musik-nya kurang stabil. Sisa kode fitur musik
-        // (MusicRepository, MusicAdapter, MusicPlayerService, layar musicContainer)
-        // dibiarin nganggur di project, gampang diaktifin lagi belakangan
-        // kalau APInya udah beres, tinggal sambung ulang klik di gameCardMusik.
+        // Kartu "Musik" diaktifkan lagi: klik kartu -> buka layar musik.
+        gameCardMusik.setOnClickListener { openMusic() }
         musicBackButton.setOnClickListener { closeMusic() }
         musicSearchButton.setOnClickListener { performMusicSearch() }
         musicSearchInput.setOnEditorActionListener { _, actionId, event ->
