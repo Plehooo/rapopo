@@ -2,18 +2,18 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="10dp"
-    android:layout_marginEnd="10dp"
-    android:layout_marginBottom="10dp"
+    android:layout_marginStart="@dimen/dp_10"
+    android:layout_marginEnd="@dimen/dp_10"
+    android:layout_marginBottom="@dimen/dp_10"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="10dp"
-    android:elevation="2dp"
+    android:padding="@dimen/dp_10"
+    android:elevation="@dimen/dp_2"
     android:background="@drawable/bg_channel_selector">
 
     <com.bittv.iptv.ui.RatioFrameLayout
         android:id="@+id/channelLogoFrame"
-        android:layout_width="86dp"
+        android:layout_width="@dimen/dp_86"
         android:layout_height="wrap_content">
 
         <ImageView
@@ -29,7 +29,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:textColor="@color/text_primary"
-            android:textSize="18sp"
+            android:textSize="@dimen/sp_18"
             android:textStyle="bold"
             android:visibility="gone" />
     </com.bittv.iptv.ui.RatioFrameLayout>
@@ -38,7 +38,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="14dp"
+        android:layout_marginStart="@dimen/dp_14"
         android:orientation="vertical">
 
         <TextView
@@ -49,12 +49,12 @@
             android:ellipsize="end"
             android:textColor="@color/text_primary"
             android:textStyle="bold"
-            android:textSize="15sp" />
+            android:textSize="@dimen/sp_15" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
+            android:layout_marginTop="@dimen/dp_5"
             android:orientation="horizontal">
 
             <TextView
@@ -62,7 +62,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/live_dot"
-                android:textSize="11sp"
+                android:textSize="@dimen/sp_11"
                 android:textStyle="bold" />
 
             <TextView
@@ -70,40 +70,40 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="@dimen/dp_6"
                 android:maxLines="1"
                 android:ellipsize="end"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
+                android:textSize="@dimen/sp_11" />
         </LinearLayout>
 
         <TextView
             android:id="@+id/channelNowPlaying"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
+            android:layout_marginTop="@dimen/dp_6"
+            android:paddingStart="@dimen/dp_8"
+            android:paddingEnd="@dimen/dp_8"
+            android:paddingTop="@dimen/dp_3"
+            android:paddingBottom="@dimen/dp_3"
             android:background="@drawable/bg_badge_playing"
             android:text="▶ SEDANG DIPUTAR"
             android:textColor="@color/text_primary"
             android:textStyle="bold"
-            android:textSize="9sp"
+            android:textSize="@dimen/sp_9"
             android:letterSpacing="0.04"
             android:visibility="gone" />
     </LinearLayout>
 
     <ImageButton
         android:id="@+id/favoriteButton"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:layout_marginStart="6dp"
+        android:layout_width="@dimen/dp_34"
+        android:layout_height="@dimen/dp_34"
+        android:layout_marginStart="@dimen/dp_6"
         android:background="@android:color/transparent"
         android:src="@drawable/ic_star_outline"
         android:scaleType="centerInside"
-        android:padding="6dp"
+        android:padding="@dimen/dp_6"
         android:contentDescription="Favorite" />
 
 </LinearLayout>

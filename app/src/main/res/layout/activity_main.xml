@@ -14,18 +14,18 @@
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="68dp"
+        android:layout_height="@dimen/dp_68"
         android:gravity="center_vertical"
-        android:paddingStart="18dp"
-        android:paddingEnd="18dp"
+        android:paddingStart="@dimen/dp_18"
+        android:paddingEnd="@dimen/dp_18"
         android:background="@drawable/bg_topbar"
-        android:elevation="6dp">
+        android:elevation="@dimen/dp_6">
 
         <FrameLayout
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="@dimen/dp_42"
+            android:layout_height="@dimen/dp_42"
             android:background="@drawable/bg_logo_frame"
-            android:padding="7dp">
+            android:padding="@dimen/dp_7">
 
             <ImageView
                 android:layout_width="match_parent"
@@ -40,14 +40,14 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:paddingStart="14dp">
+            android:paddingStart="@dimen/dp_14">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/app_name"
                 android:textColor="@color/text_primary"
-                android:textSize="20sp"
+                android:textSize="@dimen/sp_20"
                 android:letterSpacing="0.02"
                 android:textStyle="bold" />
 
@@ -55,24 +55,24 @@
                 android:id="@+id/activeChannelText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="@dimen/dp_1"
                 android:text="@string/production_by"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp"
+                android:textSize="@dimen/sp_11"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
 
         <View
-            android:layout_width="15dp"
-            android:layout_height="15dp"
+            android:layout_width="@dimen/dp_15"
+            android:layout_height="@dimen/dp_15"
             android:background="@drawable/bg_live_dot" />
     </LinearLayout>
 
     <!-- Hairline under the top bar so it reads as a distinct header, not just a color change -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="1dp"
+        android:layout_height="@dimen/dp_1"
         android:background="@color/divider" />
 
     <!-- Panel TV: semua yang tadinya langsung anak dari root, sekarang
@@ -89,7 +89,7 @@
             android:id="@+id/startupOverlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="230dp"
+            android:minHeight="@dimen/dp_230"
             android:background="@color/bg_root"
             android:foregroundGravity="center">
 
@@ -98,13 +98,13 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="@dimen/dp_24">
 
             <FrameLayout
-                android:layout_width="68dp"
-                android:layout_height="68dp"
+                android:layout_width="@dimen/dp_68"
+                android:layout_height="@dimen/dp_68"
                 android:background="@drawable/bg_logo_frame"
-                android:padding="11dp">
+                android:padding="@dimen/dp_11">
 
                 <ImageView
                     android:layout_width="match_parent"
@@ -117,35 +117,35 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
+                android:layout_marginTop="@dimen/dp_14"
                 android:text="LIVE TV"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold"
                 android:letterSpacing="0.03"
-                android:textSize="22sp" />
+                android:textSize="@dimen/sp_22" />
 
             <TextView
                 android:id="@+id/startupSubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="@dimen/dp_4"
                 android:text="Production by DITZYA"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textSize="@dimen/sp_12" />
 
             <ProgressBar
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:layout_marginTop="20dp"
+                android:layout_width="@dimen/dp_28"
+                android:layout_height="@dimen/dp_28"
+                android:layout_marginTop="@dimen/dp_20"
                 android:indeterminateTint="@color/accent" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="@dimen/dp_10"
                 android:text="Memuat channel..."
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textSize="@dimen/sp_12" />
         </LinearLayout>
     </FrameLayout>
 
@@ -160,15 +160,15 @@
         <Button
             android:id="@+id/fullscreenRetryButton"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/dp_48"
             android:layout_gravity="center"
-            android:paddingStart="22dp"
-            android:paddingEnd="22dp"
+            android:paddingStart="@dimen/dp_22"
+            android:paddingEnd="@dimen/dp_22"
             android:background="@drawable/bg_button_primary"
             android:textColor="@color/text_primary"
             android:text="↻  Coba Lagi"
             android:textAllCaps="false"
-            android:textSize="13sp"
+            android:textSize="@dimen/sp_13"
             android:visibility="gone" />
 
         <androidx.media3.ui.PlayerView
@@ -190,25 +190,25 @@
 
         <View
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="@dimen/dp_56"
             android:layout_gravity="bottom"
             android:background="@drawable/scrim_player_bottom" />
 
         <Button
             android:id="@+id/fullscreenButton"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="@dimen/dp_42"
+            android:layout_height="@dimen/dp_42"
             android:layout_gravity="bottom|end"
-            android:layout_marginEnd="10dp"
-            android:layout_marginBottom="10dp"
+            android:layout_marginEnd="@dimen/dp_10"
+            android:layout_marginBottom="@dimen/dp_10"
             android:background="@drawable/bg_fullscreen_toggle"
             android:text="⛶"
             android:textColor="@color/text_primary"
-            android:textSize="20sp"
+            android:textSize="@dimen/sp_20"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:padding="0dp"
-            android:elevation="6dp"
+            android:elevation="@dimen/dp_6"
             android:contentDescription="Fullscreen" />
 
     </com.bittv.iptv.ui.RatioFrameLayout>
@@ -216,16 +216,16 @@
     <LinearLayout
         android:id="@+id/statusBar"
         android:layout_width="match_parent"
-        android:layout_height="38dp"
+        android:layout_height="@dimen/dp_38"
         android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="@dimen/dp_16"
+        android:paddingEnd="@dimen/dp_16"
         android:background="@color/bg_root_soft">
 
         <View
-            android:layout_width="12dp"
-            android:layout_height="12dp"
-            android:layout_marginEnd="9dp"
+            android:layout_width="@dimen/dp_12"
+            android:layout_height="@dimen/dp_12"
+            android:layout_marginEnd="@dimen/dp_9"
             android:background="@drawable/bg_live_dot" />
 
         <TextView
@@ -235,7 +235,7 @@
             android:layout_weight="1"
             android:text="LIVE TV"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp"
+            android:textSize="@dimen/sp_12"
             android:maxLines="1"
             android:ellipsize="end" />
 
@@ -243,14 +243,14 @@
              nongol). Diklik baru muncul pilihan grup + prev/next. -->
         <TextView
             android:id="@+id/filterMenuButton"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:layout_marginStart="8dp"
+            android:layout_width="@dimen/dp_30"
+            android:layout_height="@dimen/dp_30"
+            android:layout_marginStart="@dimen/dp_8"
             android:gravity="center"
             android:text="⋯"
             android:textColor="@color/text_secondary"
             android:textStyle="bold"
-            android:textSize="16sp"
+            android:textSize="@dimen/sp_16"
             android:background="@drawable/bg_filter_menu_button"
             android:clickable="true"
             android:focusable="true"
@@ -265,12 +265,12 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginStart="14dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="14dp"
+        android:layout_marginStart="@dimen/dp_14"
+        android:layout_marginTop="@dimen/dp_10"
+        android:layout_marginEnd="@dimen/dp_14"
         android:background="@drawable/bg_channel"
-        android:padding="10dp"
-        android:elevation="4dp"
+        android:padding="@dimen/dp_10"
+        android:elevation="@dimen/dp_4"
         android:visibility="gone">
 
         <!-- Search dihapus dari tampilan sesuai request — cukup dropdown
@@ -287,26 +287,26 @@
         <Spinner
             android:id="@+id/groupSpinner"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/dp_48"
             android:background="@drawable/bg_input"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp" />
+            android:paddingStart="@dimen/dp_14"
+            android:paddingEnd="@dimen/dp_14" />
 
         <!-- Mode Hemat Data: batasi bitrate video, dipilih dari beberapa level (2 Mbps s/d Kbps terkecil). -->
         <LinearLayout
             android:id="@+id/dataSaverRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/dp_8"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:clickable="true"
             android:focusable="true"
             android:background="?android:attr/selectableItemBackground"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp">
+            android:paddingStart="@dimen/dp_4"
+            android:paddingEnd="@dimen/dp_4"
+            android:paddingTop="@dimen/dp_6"
+            android:paddingBottom="@dimen/dp_6">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -320,15 +320,15 @@
                     android:text="Hemat Data"
                     android:textColor="@color/text_primary"
                     android:textStyle="bold"
-                    android:textSize="13sp" />
+                    android:textSize="@dimen/sp_13" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="1dp"
+                    android:layout_marginTop="@dimen/dp_1"
                     android:text="Pilih batas kualitas video"
                     android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
+                    android:textSize="@dimen/sp_11" />
             </LinearLayout>
 
             <TextView
@@ -338,13 +338,13 @@
                 android:text="Nonaktif ▾"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="@dimen/dp_48"
+            android:layout_marginTop="@dimen/dp_8"
             android:orientation="horizontal">
 
             <Button
@@ -352,34 +352,34 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="@dimen/dp_6"
                 android:background="@drawable/bg_button_outline"
                 android:textColor="@color/text_primary"
                 android:text="‹  Prev"
                 android:textAllCaps="false"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
 
             <Button
                 android:id="@+id/nextButton"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="@dimen/dp_6"
                 android:background="@drawable/bg_button_primary"
                 android:textColor="@color/text_primary"
                 android:text="Next  ›"
                 android:textAllCaps="false"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
         </LinearLayout>
     </LinearLayout>
 
     <Button
         android:id="@+id/retryButton"
         android:layout_width="match_parent"
-        android:layout_height="46dp"
-        android:layout_marginStart="14dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="14dp"
+        android:layout_height="@dimen/dp_46"
+        android:layout_marginStart="@dimen/dp_14"
+        android:layout_marginTop="@dimen/dp_10"
+        android:layout_marginEnd="@dimen/dp_14"
         android:background="@drawable/bg_button_primary"
         android:textColor="@color/text_primary"
         android:textAllCaps="false"
@@ -389,12 +389,12 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="14dp"
-        android:layout_marginBottom="2dp"
+        android:layout_marginStart="@dimen/dp_16"
+        android:layout_marginTop="@dimen/dp_14"
+        android:layout_marginBottom="@dimen/dp_2"
         android:text="SEMUA CHANNEL"
         android:textColor="@color/text_tertiary"
-        android:textSize="11sp"
+        android:textSize="@dimen/sp_11"
         android:textStyle="bold"
         android:letterSpacing="0.08" />
 
@@ -404,10 +404,10 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
-        android:paddingStart="8dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="16dp" />
+        android:paddingStart="@dimen/dp_8"
+        android:paddingTop="@dimen/dp_6"
+        android:paddingEnd="@dimen/dp_8"
+        android:paddingBottom="@dimen/dp_16" />
 
     </LinearLayout>
     <!-- /tvContentContainer -->
@@ -437,36 +437,36 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="@dimen/dp_16">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="14dp"
+                    android:layout_marginBottom="@dimen/dp_14"
                     android:text="🎮 PILIH GAME"
                     android:textColor="@color/game_accent_light"
                     android:textStyle="bold"
-                    android:textSize="13sp"
+                    android:textSize="@dimen/sp_13"
                     android:letterSpacing="0.06" />
 
                 <LinearLayout
                     android:id="@+id/gameCardTebakGambar"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
+                    android:layout_marginBottom="@dimen/dp_12"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:background="@drawable/bg_button_game"
-                    android:padding="16dp"
+                    android:padding="@dimen/dp_16"
                     android:clickable="true"
                     android:focusable="true">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="14dp"
+                        android:layout_marginEnd="@dimen/dp_14"
                         android:text="🖼️"
-                        android:textSize="28sp" />
+                        android:textSize="@dimen/sp_28" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -480,15 +480,15 @@
                             android:text="Tebak Gambar"
                             android:textColor="@color/text_primary"
                             android:textStyle="bold"
-                            android:textSize="15sp" />
+                            android:textSize="@dimen/sp_15" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
+                            android:layout_marginTop="@dimen/dp_2"
                             android:text="Tebak gambarnya sebelum waktu habis"
                             android:textColor="@color/text_secondary"
-                            android:textSize="12sp"
+                            android:textSize="@dimen/sp_12"
                             android:maxLines="1"
                             android:ellipsize="end" />
                     </LinearLayout>
@@ -499,18 +499,18 @@
                         android:text="›"
                         android:textColor="@color/game_accent_light"
                         android:textStyle="bold"
-                        android:textSize="22sp" />
+                        android:textSize="@dimen/sp_22" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/gameCardMusik"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
+                    android:layout_marginBottom="@dimen/dp_12"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:background="@drawable/bg_button_outline"
-                    android:padding="16dp"
+                    android:padding="@dimen/dp_16"
                     android:clickable="true"
                     android:focusable="true"
                     android:alpha="1.0">
@@ -518,9 +518,9 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="14dp"
+                        android:layout_marginEnd="@dimen/dp_14"
                         android:text="🎵"
-                        android:textSize="28sp" />
+                        android:textSize="@dimen/sp_28" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -534,34 +534,34 @@
                             android:text="Musik"
                             android:textColor="@color/text_primary"
                             android:textStyle="bold"
-                            android:textSize="15sp" />
+                            android:textSize="@dimen/sp_15" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
+                            android:layout_marginTop="@dimen/dp_2"
                             android:text="Cari dan putar musik"
                             android:textColor="@color/text_secondary"
-                            android:textSize="12sp" />
+                            android:textSize="@dimen/sp_12" />
                     </LinearLayout>
                 </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
+                    android:layout_marginBottom="@dimen/dp_12"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:background="@drawable/bg_button_outline"
-                    android:padding="16dp"
+                    android:padding="@dimen/dp_16"
                     android:alpha="0.55">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="14dp"
+                        android:layout_marginEnd="@dimen/dp_14"
                         android:text="🔤"
-                        android:textSize="28sp" />
+                        android:textSize="@dimen/sp_28" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -575,15 +575,15 @@
                             android:text="Tebak Kata"
                             android:textColor="@color/text_primary"
                             android:textStyle="bold"
-                            android:textSize="15sp" />
+                            android:textSize="@dimen/sp_15" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
+                            android:layout_marginTop="@dimen/dp_2"
                             android:text="Segera hadir"
                             android:textColor="@color/text_secondary"
-                            android:textSize="12sp" />
+                            android:textSize="@dimen/sp_12" />
                     </LinearLayout>
                 </LinearLayout>
 
@@ -593,15 +593,15 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:background="@drawable/bg_button_outline"
-                    android:padding="16dp"
+                    android:padding="@dimen/dp_16"
                     android:alpha="0.55">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="14dp"
+                        android:layout_marginEnd="@dimen/dp_14"
                         android:text="📺"
-                        android:textSize="28sp" />
+                        android:textSize="@dimen/sp_28" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -615,15 +615,15 @@
                             android:text="Tebak Logo Channel"
                             android:textColor="@color/text_primary"
                             android:textStyle="bold"
-                            android:textSize="15sp" />
+                            android:textSize="@dimen/sp_15" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
+                            android:layout_marginTop="@dimen/dp_2"
                             android:text="Segera hadir"
                             android:textColor="@color/text_secondary"
-                            android:textSize="12sp" />
+                            android:textSize="@dimen/sp_12" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
@@ -636,7 +636,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:visibility="gone"
-            android:padding="16dp">
+            android:padding="@dimen/dp_16">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -646,9 +646,9 @@
 
             <TextView
                 android:id="@+id/gameBackButton"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="@dimen/dp_30"
+                android:layout_height="@dimen/dp_30"
+                android:layout_marginEnd="@dimen/dp_8"
                 android:background="@drawable/bg_button_outline"
                 android:clickable="true"
                 android:focusable="true"
@@ -656,7 +656,7 @@
                 android:text="‹"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold"
-                android:textSize="18sp" />
+                android:textSize="@dimen/sp_18" />
 
             <TextView
                 android:layout_width="0dp"
@@ -665,7 +665,7 @@
                 android:text="🖼️ TEBAK GAMBAR"
                 android:textColor="@color/game_accent_light"
                 android:textStyle="bold"
-                android:textSize="13sp"
+                android:textSize="@dimen/sp_13"
                 android:letterSpacing="0.06" />
 
             <TextView
@@ -673,29 +673,29 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_game_timer"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp"
-                android:layout_marginEnd="8dp"
+                android:paddingStart="@dimen/dp_14"
+                android:paddingEnd="@dimen/dp_14"
+                android:paddingTop="@dimen/dp_6"
+                android:paddingBottom="@dimen/dp_6"
+                android:layout_marginEnd="@dimen/dp_8"
                 android:text="⏱ 60"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
 
             <TextView
                 android:id="@+id/gameScoreText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_button_game"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp"
+                android:paddingStart="@dimen/dp_14"
+                android:paddingEnd="@dimen/dp_14"
+                android:paddingTop="@dimen/dp_6"
+                android:paddingBottom="@dimen/dp_6"
                 android:text="Skor: 0"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
         </LinearLayout>
 
         <!-- Kartu gambar bergaya "megah": border gradasi + shadow -->
@@ -703,10 +703,10 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/dp_12"
             android:background="@drawable/bg_game_image_frame"
-            android:elevation="6dp"
-            android:padding="10dp">
+            android:elevation="@dimen/dp_6"
+            android:padding="@dimen/dp_10">
 
             <ImageView
                 android:id="@+id/gameImageView"
@@ -717,8 +717,8 @@
 
             <ProgressBar
                 android:id="@+id/gameImageLoading"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="@dimen/dp_32"
+                android:layout_height="@dimen/dp_32"
                 android:layout_gravity="center"
                 android:indeterminateTint="@color/game_accent_light" />
         </FrameLayout>
@@ -727,21 +727,21 @@
             android:id="@+id/gameFeedbackText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="@dimen/dp_10"
             android:gravity="center"
             android:textColor="@color/text_secondary"
-            android:textSize="13sp"
+            android:textSize="@dimen/sp_13"
             android:minLines="1" />
 
         <EditText
             android:id="@+id/gameAnswerInput"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="@dimen/dp_52"
+            android:layout_marginTop="@dimen/dp_8"
             android:background="@drawable/bg_input"
             android:hint="Jawabanmu apa..."
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingStart="@dimen/dp_16"
+            android:paddingEnd="@dimen/dp_16"
             android:singleLine="true"
             android:imeOptions="actionDone"
             android:textColor="@color/text_primary"
@@ -751,8 +751,8 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="10dp"
+            android:layout_height="@dimen/dp_48"
+            android:layout_marginTop="@dimen/dp_10"
             android:orientation="horizontal">
 
             <Button
@@ -760,24 +760,24 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="@dimen/dp_6"
                 android:background="@drawable/bg_button_outline"
                 android:textColor="@color/text_primary"
                 android:text="Lewati"
                 android:textAllCaps="false"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
 
             <Button
                 android:id="@+id/gameSubmitButton"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="@dimen/dp_6"
                 android:background="@drawable/bg_button_game"
                 android:textColor="@color/text_primary"
                 android:text="Jawab"
                 android:textAllCaps="false"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
         </LinearLayout>
         </LinearLayout>
         <!-- /tebakGambarContainer -->
@@ -791,7 +791,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:visibility="gone"
-            android:padding="16dp">
+            android:padding="@dimen/dp_16">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -801,9 +801,9 @@
 
                 <TextView
                     android:id="@+id/musicBackButton"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
-                    android:layout_marginEnd="8dp"
+                    android:layout_width="@dimen/dp_30"
+                    android:layout_height="@dimen/dp_30"
+                    android:layout_marginEnd="@dimen/dp_8"
                     android:background="@drawable/bg_button_outline"
                     android:clickable="true"
                     android:focusable="true"
@@ -811,7 +811,7 @@
                     android:text="‹"
                     android:textColor="@color/text_primary"
                     android:textStyle="bold"
-                    android:textSize="18sp" />
+                    android:textSize="@dimen/sp_18" />
 
                 <TextView
                     android:layout_width="0dp"
@@ -820,14 +820,14 @@
                     android:text="🎵 MUSIK"
                     android:textColor="@color/game_accent_light"
                     android:textStyle="bold"
-                    android:textSize="13sp"
+                    android:textSize="@dimen/sp_13"
                     android:letterSpacing="0.06" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="12dp"
+                android:layout_height="@dimen/dp_48"
+                android:layout_marginTop="@dimen/dp_12"
                 android:orientation="horizontal">
 
                 <EditText
@@ -835,11 +835,11 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginEnd="@dimen/dp_8"
                     android:background="@drawable/bg_input"
                     android:hint="Cari judul lagu..."
-                    android:paddingStart="16dp"
-                    android:paddingEnd="16dp"
+                    android:paddingStart="@dimen/dp_16"
+                    android:paddingEnd="@dimen/dp_16"
                     android:singleLine="true"
                     android:imeOptions="actionSearch"
                     android:textColor="@color/text_primary"
@@ -848,42 +848,42 @@
 
                 <Button
                     android:id="@+id/musicSearchButton"
-                    android:layout_width="72dp"
+                    android:layout_width="@dimen/dp_72"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_button_game"
                     android:textColor="@color/text_primary"
                     android:text="Cari"
                     android:textAllCaps="false"
-                    android:textSize="13sp" />
+                    android:textSize="@dimen/sp_13" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/musicFeedbackText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="@dimen/dp_10"
                 android:gravity="center"
                 android:text="Ketik judul lagu, terus tekan Cari."
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
 
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:layout_marginTop="4dp">
+                android:layout_marginTop="@dimen/dp_4">
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/musicResultsList"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:clipToPadding="false"
-                    android:paddingTop="6dp" />
+                    android:paddingTop="@dimen/dp_6" />
 
                 <ProgressBar
                     android:id="@+id/musicLoading"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
+                    android:layout_width="@dimen/dp_32"
+                    android:layout_height="@dimen/dp_32"
                     android:layout_gravity="center"
                     android:indeterminateTint="@color/game_accent_light"
                     android:visibility="gone" />
@@ -894,17 +894,17 @@
                 android:id="@+id/musicPlayerBar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="@dimen/dp_10"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/bg_button_game"
-                android:padding="10dp"
+                android:padding="@dimen/dp_10"
                 android:visibility="gone">
 
                 <ImageView
                     android:id="@+id/musicPlayerThumbnail"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
+                    android:layout_width="@dimen/dp_42"
+                    android:layout_height="@dimen/dp_42"
                     android:scaleType="centerCrop"
                     android:background="@drawable/bg_input"
                     android:contentDescription="Sampul lagu" />
@@ -914,18 +914,18 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:layout_marginStart="10dp"
+                    android:layout_marginStart="@dimen/dp_10"
                     android:maxLines="2"
                     android:ellipsize="end"
                     android:textColor="@color/text_primary"
                     android:textStyle="bold"
-                    android:textSize="13sp" />
+                    android:textSize="@dimen/sp_13" />
 
                 <TextView
                     android:id="@+id/musicPlayPauseButton"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="8dp"
+                    android:layout_width="@dimen/dp_40"
+                    android:layout_height="@dimen/dp_40"
+                    android:layout_marginStart="@dimen/dp_8"
                     android:background="@drawable/bg_button_outline"
                     android:clickable="true"
                     android:focusable="true"
@@ -933,7 +933,7 @@
                     android:text="▶"
                     android:textColor="@color/text_primary"
                     android:textStyle="bold"
-                    android:textSize="16sp" />
+                    android:textSize="@dimen/sp_16" />
             </LinearLayout>
         </LinearLayout>
         <!-- /musicContainer -->
@@ -947,7 +947,7 @@
     <View
         android:id="@+id/bottomNavDivider"
         android:layout_width="match_parent"
-        android:layout_height="1dp"
+        android:layout_height="@dimen/dp_1"
         android:background="@color/divider" />
 
     <LinearLayout
@@ -964,8 +964,8 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
+            android:paddingTop="@dimen/dp_10"
+            android:paddingBottom="@dimen/dp_10"
             android:clickable="true"
             android:focusable="true"
             android:background="?attr/selectableItemBackgroundBorderless">
@@ -974,17 +974,17 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="📺"
-                android:textSize="20sp" />
+                android:textSize="@dimen/sp_20" />
 
             <TextView
                 android:id="@+id/bottomNavTvLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="@dimen/dp_3"
                 android:text="TV"
                 android:textColor="@color/brand_blue"
                 android:textStyle="bold"
-                android:textSize="11sp" />
+                android:textSize="@dimen/sp_11" />
         </LinearLayout>
 
         <LinearLayout
@@ -994,8 +994,8 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
+            android:paddingTop="@dimen/dp_10"
+            android:paddingBottom="@dimen/dp_10"
             android:clickable="true"
             android:focusable="true"
             android:background="?attr/selectableItemBackgroundBorderless">
@@ -1004,16 +1004,16 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="🎮"
-                android:textSize="20sp" />
+                android:textSize="@dimen/sp_20" />
 
             <TextView
                 android:id="@+id/bottomNavGameLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="@dimen/dp_3"
                 android:text="Game"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
+                android:textSize="@dimen/sp_11" />
         </LinearLayout>
     </LinearLayout>
 
@@ -1035,7 +1035,7 @@
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone"
-        android:elevation="24dp">
+        android:elevation="@dimen/dp_24">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -1043,48 +1043,48 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center"
-            android:padding="28dp">
+            android:padding="@dimen/dp_28">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="⚠️"
-                android:textSize="40sp" />
+                android:textSize="@dimen/sp_40" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
+                android:layout_marginTop="@dimen/dp_14"
                 android:text="Update Wajib"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold"
-                android:textSize="20sp" />
+                android:textSize="@dimen/sp_20" />
 
             <TextView
                 android:id="@+id/mandatoryUpdateMessage"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/dp_8"
                 android:gravity="center"
                 android:text="Versi aplikasi ini sudah tidak didukung. Update ke versi terbaru untuk melanjutkan."
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="@dimen/sp_13" />
 
             <TextView
                 android:id="@+id/mandatoryUpdateProgress"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="@dimen/dp_6"
                 android:text=""
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textSize="@dimen/sp_12" />
 
             <Button
                 android:id="@+id/mandatoryUpdateButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:minWidth="180dp"
+                android:layout_marginTop="@dimen/dp_20"
+                android:minWidth="@dimen/dp_180"
                 android:text="Update Sekarang"
                 android:textColor="@android:color/white"
                 android:backgroundTint="@color/accent" />
