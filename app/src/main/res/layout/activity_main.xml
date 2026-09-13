@@ -512,11 +512,10 @@
                     android:layout_marginBottom="@dimen/dp_12"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:background="@drawable/bg_button_outline"
+                    android:background="@drawable/bg_button_game"
                     android:padding="@dimen/dp_16"
                     android:clickable="true"
-                    android:focusable="true"
-                    android:alpha="1.0">
+                    android:focusable="true">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -547,6 +546,14 @@
                             android:textColor="@color/text_secondary"
                             android:textSize="@dimen/sp_12" />
                     </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="›"
+                        android:textColor="@color/game_accent_light"
+                        android:textStyle="bold"
+                        android:textSize="@dimen/sp_22" />
                 </LinearLayout>
 
                 <LinearLayout
