@@ -854,8 +854,15 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_READY && controller.isPlaying) {
-                            musicPlayPauseButton.text = "⏸"
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                if (controller.isPlaying) musicPlayPauseButton.text = "⏸"
+                            }
+                            Player.STATE_ENDED -> {
+                                musicPlayPauseButton.text = "▶"
+                                musicPlayerBar.visibility = View.GONE
+                                musicFeedbackText.text = "Lagu selesai."
+                            }
                         }
                     }
 
@@ -900,10 +907,10 @@ class MainActivity : AppCompatActivity() {
 
                 result.onSuccess { tracks ->
                     musicAdapter.submitList(tracks)
-                    val track = tracks.firstOrNull()
-                    if (track != null) {
-                        musicFeedbackText.text = "▶ ${track.title}"
-                        playMusicTrack(track)
+                    musicFeedbackText.text = if (tracks.isEmpty()) {
+                        "Tidak ada hasil musik."
+                    } else {
+                        "Ditemukan ${tracks.size} lagu. Pilih lagu untuk memutar."
                     }
                 }.onFailure {
                     musicFeedbackText.text = "Gagal: ${it.message ?: it.javaClass.simpleName}"
