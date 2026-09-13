@@ -748,21 +748,41 @@ class MainActivity : AppCompatActivity() {
 
     /** Musik harus benar-benar dilepas saat kembali ke tab TV. */
     private fun stopMusicForTvMode() {
+        // Jangan biarkan panel musik yang sebelumnya dibuka membuat seluruh
+        // area Game menjadi kosong saat user kembali dari TV.
         musicContainer.visibility = View.GONE
         musicPlayerBar.visibility = View.GONE
         pendingMusicMediaItem = null
         musicResolving = false
+        musicSearching = false
+        musicLoading.visibility = View.GONE
         musicFeedbackText.text = ""
+
+        // Putuskan controller lama sepenuhnya. Saat user membuka Musik lagi,
+        // controller akan dibuat ulang terhadap service yang baru. Ini mencegah
+        // state player lama menempel setelah pindah TV -> Game.
+        mediaControllerFuture?.let { future ->
+            runCatching { future.cancel(true) }
+        }
+        mediaControllerFuture = null
 
         mediaController?.let { controller ->
             runCatching { controller.pause() }
             runCatching { controller.stop() }
             runCatching { controller.clearMediaItems() }
+            runCatching { controller.release() }
         }
+        mediaController = null
 
         runCatching {
             stopService(Intent(this, MusicPlayerService::class.java))
         }
+
+        // Setelah keluar dari Musik, Game selalu kembali ke menu utama.
+        // Tanpa ini gameMenuContainer bisa tetap GONE karena sebelumnya
+        // disembunyikan oleh openMusic(), sehingga tab Game tampak hitam/kosong.
+        tebakGambarContainer.visibility = View.GONE
+        gameMenuContainer.visibility = View.VISIBLE
     }
 
     private fun showTvTab() {
@@ -790,6 +810,14 @@ class MainActivity : AppCompatActivity() {
     private fun showGameTab() {
         if (isGameTabActive) return
         isGameTabActive = true
+
+        // Safety net: jika sebelumnya user keluar ke TV dari layar Musik,
+        // pastikan panel anak Game tidak semuanya GONE.
+        musicContainer.visibility = View.GONE
+        musicPlayerBar.visibility = View.GONE
+        if (tebakGambarContainer.visibility != View.VISIBLE) {
+            gameMenuContainer.visibility = View.VISIBLE
+        }
 
         crossFadeSwap(from = tvContentContainer, to = gameContentContainer)
         bottomNavGameLabel.setTextColor(resources.getColor(R.color.accent, theme))
@@ -933,61 +961,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Resolve hasil YouTube ke MP3 saat user menekan salah satu hasil, lalu play. */
+    /** Play lagu yang dipilih langsung dari field mp3 yang dikirim endpoint ytplay. */
     private fun playMusicTrack(track: MusicRepository.MusicTrack) {
-        if (musicSearching) return
-
-        musicSearching = true
-        musicLoading.visibility = View.VISIBLE
-        musicFeedbackText.text = "Menyiapkan: ${track.title}..."
-
-        backgroundExecutor.execute {
-            val resolved = MusicRepository.resolveToMp3(track)
-            mainHandler.post {
-                musicSearching = false
-                musicLoading.visibility = View.GONE
-
-                resolved.onSuccess { playable ->
-                    val mp3Url = playable.mp3Url.trim()
-                    if (mp3Url.isBlank()) {
-                        musicFeedbackText.text = "Gagal: link MP3 tidak tersedia."
-                        return@onSuccess
-                    }
-
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(mp3Url)
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(playable.title)
-                                .setArtist(playable.author.ifBlank { playable.channel })
-                                .setArtworkUri(
-                                    playable.thumbnailUrl.takeIf { it.isNotBlank() }
-                                        ?.let { android.net.Uri.parse(it) }
-                                )
-                                .build()
-                        )
-                        .build()
-
-                    val controller = mediaController
-                    if (controller != null) {
-                        controller.setMediaItem(mediaItem)
-                        controller.prepare()
-                        controller.play()
-                    } else {
-                        pendingMusicMediaItem = mediaItem
-                        connectMusicController()
-                    }
-
-                    musicPlayerBar.visibility = View.VISIBLE
-                    musicPlayerTitle.text = playable.title
-                    LogoLoader.load(playable.thumbnailUrl, musicPlayerThumbnail)
-                    musicFeedbackText.text = "Memutar: ${playable.title}"
-                }.onFailure { error ->
-                    musicFeedbackText.text =
-                        "Gagal memuat lagu: ${error.message ?: error.javaClass.simpleName}"
-                }
-            }
+        val mp3Url = track.mp3Url.trim()
+        if (mp3Url.isBlank()) {
+            musicFeedbackText.text = "Gagal: link MP3 tidak tersedia."
+            return
         }
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(mp3Url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.author.ifBlank { track.channel })
+                    .setArtworkUri(track.thumbnailUrl.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) })
+                    .build()
+            )
+            .build()
+
+        val controller = mediaController
+        if (controller != null) {
+            controller.setMediaItem(mediaItem)
+            controller.prepare()
+            controller.play()
+        } else {
+            pendingMusicMediaItem = mediaItem
+            connectMusicController()
+        }
+
+        musicPlayerBar.visibility = View.VISIBLE
+        musicPlayerTitle.text = track.title
+        LogoLoader.load(track.thumbnailUrl, musicPlayerThumbnail)
+        musicFeedbackText.text = "Memutar: ${track.title}"
     }
 
     /** Toggle play/pause lagu yang lagi aktif di mini player. */
