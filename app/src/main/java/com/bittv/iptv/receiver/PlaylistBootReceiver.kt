@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
+import com.bittv.iptv.worker.EwsUpdateWorker
 import com.bittv.iptv.worker.FreeNotificationWorker
 import com.bittv.iptv.worker.PlaylistUpdateWorker
 
@@ -30,5 +31,9 @@ class PlaylistBootReceiver : BroadcastReceiver() {
         AppUpdateWorker.schedule(appContext)
         FreeNotificationWorker.schedule(appContext)
         EpgUpdateWorker.schedule(appContext)
+        // EWS (gempa/cuaca/gunung berapi terdekat) ikut dijadwal ulang juga,
+        // biar konsisten sama worker lain -- aman dipanggil walau lokasi
+        // belum ada (EwsRepository otomatis balik "NoLocation").
+        EwsUpdateWorker.schedule(appContext)
     }
 }
