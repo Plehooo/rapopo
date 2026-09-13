@@ -897,9 +897,14 @@ class MainActivity : AppCompatActivity() {
             mainHandler.post {
                 musicSearching = false
                 musicLoading.visibility = View.GONE
+
                 result.onSuccess { tracks ->
                     musicAdapter.submitList(tracks)
-                    musicFeedbackText.text = "Ditemukan ${tracks.size} lagu. Tap buat muter."
+                    val track = tracks.firstOrNull()
+                    if (track != null) {
+                        musicFeedbackText.text = "▶ ${track.title}"
+                        playMusicTrack(track)
+                    }
                 }.onFailure {
                     musicFeedbackText.text = "Gagal: ${it.message ?: it.javaClass.simpleName}"
                 }
@@ -907,51 +912,49 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Ambil link mp3 buat lagu yang dipilih, terus langsung muterin lewat MusicPlayerService. */
+    /**
+     * ytplay sudah memberikan mp3, thumbnail dan metadata.
+     * Jadi lagu diputar LANGSUNG tanpa request resolve endpoint kedua.
+     */
     private fun playMusicTrack(track: MusicRepository.MusicTrack) {
         if (musicResolving) return
-        musicResolving = true
-        musicFeedbackText.text = "Menyiapkan \"${track.title}\"..."
-        musicLoading.visibility = View.VISIBLE
-
-        backgroundExecutor.execute {
-            val result = MusicRepository.resolvePlayable(track.title)
-            mainHandler.post {
-                musicResolving = false
-                musicLoading.visibility = View.GONE
-                result.onSuccess { playable ->
-                    musicFeedbackText.text = "Ditemukan ${musicAdapter.itemCount} lagu. Tap buat muter."
-
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(playable.mp3Url)
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(playable.title)
-                                .setArtist(playable.author)
-                                .build()
-                        )
-                        .build()
-
-                    val controller = mediaController
-                    if (controller != null) {
-                        controller.setMediaItem(mediaItem)
-                        controller.prepare()
-                        controller.play()
-                    } else {
-                        // Controller masih dalam proses binding. Simpan item supaya
-                        // perintah play dieksekusi begitu service siap.
-                        pendingMusicMediaItem = mediaItem
-                        musicFeedbackText.text = "Player musik sedang disiapkan..."
-                    }
-
-                    musicPlayerBar.visibility = View.VISIBLE
-                    musicPlayerTitle.text = playable.title
-                    LogoLoader.load(playable.thumbnailUrl.ifBlank { track.thumbnailUrl }, musicPlayerThumbnail)
-                }.onFailure {
-                    musicFeedbackText.text = "Gagal muter: ${it.message ?: it.javaClass.simpleName}"
-                }
-            }
+        if (track.mp3Url.isBlank()) {
+            musicFeedbackText.text = "Gagal: link MP3 kosong"
+            return
         }
+
+        musicResolving = true
+        musicFeedbackText.text = "Memutar \"${track.title}\"..."
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(track.mp3Url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.author)
+                    .setArtworkUri(
+                        track.thumbnailUrl.takeIf { it.isNotBlank() }?.let(android.net.Uri::parse)
+                    )
+                    .build()
+            )
+            .build()
+
+        val controller = mediaController
+        if (controller != null) {
+            controller.setMediaItem(mediaItem)
+            controller.prepare()
+            controller.play()
+            musicResolving = false
+            musicFeedbackText.text = "▶ ${track.title}"
+        } else {
+            pendingMusicMediaItem = mediaItem
+            musicResolving = false
+            musicFeedbackText.text = "Player musik sedang disiapkan..."
+        }
+
+        musicPlayerBar.visibility = View.VISIBLE
+        musicPlayerTitle.text = track.title
+        LogoLoader.load(track.thumbnailUrl, musicPlayerThumbnail)
     }
 
     /** Toggle play/pause lagu yang lagi aktif di mini player. */

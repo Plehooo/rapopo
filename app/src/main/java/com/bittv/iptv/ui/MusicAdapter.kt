@@ -40,11 +40,15 @@ class MusicAdapter(
 
         fun bind(track: MusicTrack, onTrackClick: (MusicTrack) -> Unit) {
             title.text = track.title
-            subtitle.text = if (track.channel.isNotBlank()) {
-                "${track.channel} • ${track.durationLabel}"
-            } else {
-                track.durationLabel
-            }
+
+            val meta = listOf(
+                track.author,
+                track.durationLabel,
+                track.viewsLabel,
+                track.publishedLabel
+            ).filter { it.isNotBlank() }
+
+            subtitle.text = meta.joinToString(" • ")
             LogoLoader.load(track.thumbnailUrl, thumbnail)
             itemView.setOnClickListener { onTrackClick(track) }
         }
