@@ -23,6 +23,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
@@ -161,6 +162,33 @@ class MainActivity : AppCompatActivity() {
     private lateinit var musicPlayerTitle: TextView
     private lateinit var musicPlayPauseButton: TextView
     private lateinit var musicAdapter: MusicAdapter
+
+    // --- Layar "Now Playing" musik (full screen megah ala Spotify) ---
+    private lateinit var musicNowPlayingContainer: View
+    private lateinit var musicNowPlayingCollapseButton: View
+    private lateinit var musicNowPlayingArt: android.widget.ImageView
+    private lateinit var musicNowPlayingTitle: TextView
+    private lateinit var musicNowPlayingSubtitle: TextView
+    private lateinit var musicNowPlayingSeekBar: SeekBar
+    private lateinit var musicNowPlayingPositionText: TextView
+    private lateinit var musicNowPlayingDurationText: TextView
+    private lateinit var musicNowPlayingPrevButton: View
+    private lateinit var musicNowPlayingPlayPauseButton: TextView
+    private lateinit var musicNowPlayingNextButton: View
+
+    private var lastMusicTracks: List<MusicRepository.MusicTrack> = emptyList()
+    private var currentMusicTrackIndex: Int = -1
+    private var currentMusicTrackSubtitle: String = ""
+    private var currentMusicTrackThumbnailUrl: String = ""
+    private var musicSeekBarDragging: Boolean = false
+
+    /** Update posisi/durasi tiap 500ms selama layar Now Playing kebuka. */
+    private val musicProgressRunnable = object : Runnable {
+        override fun run() {
+            updateMusicNowPlayingProgress()
+            mainHandler.postDelayed(this, 500)
+        }
+    }
     private var musicSearching = false
     private var musicResolving = false
     private var mediaControllerFuture: ListenableFuture<MediaController>? = null
@@ -353,6 +381,36 @@ class MainActivity : AppCompatActivity() {
             isSearch
         }
         musicPlayPauseButton.setOnClickListener { toggleMusicPlayPause() }
+
+        // --- Wiring layar "Now Playing" (expand dari mini player bar) ---
+        musicNowPlayingContainer = findViewById(R.id.musicNowPlayingContainer)
+        musicNowPlayingCollapseButton = findViewById(R.id.musicNowPlayingCollapseButton)
+        musicNowPlayingArt = findViewById(R.id.musicNowPlayingArt)
+        musicNowPlayingTitle = findViewById(R.id.musicNowPlayingTitle)
+        musicNowPlayingSubtitle = findViewById(R.id.musicNowPlayingSubtitle)
+        musicNowPlayingSeekBar = findViewById(R.id.musicNowPlayingSeekBar)
+        musicNowPlayingPositionText = findViewById(R.id.musicNowPlayingPositionText)
+        musicNowPlayingDurationText = findViewById(R.id.musicNowPlayingDurationText)
+        musicNowPlayingPrevButton = findViewById(R.id.musicNowPlayingPrevButton)
+        musicNowPlayingPlayPauseButton = findViewById(R.id.musicNowPlayingPlayPauseButton)
+        musicNowPlayingNextButton = findViewById(R.id.musicNowPlayingNextButton)
+
+        // Tap bar mini player (bukan tombol play/pause-nya) buat besarin ke full screen.
+        musicPlayerBar.setOnClickListener { openMusicNowPlaying() }
+        musicNowPlayingCollapseButton.setOnClickListener { closeMusicNowPlaying() }
+        musicNowPlayingPlayPauseButton.setOnClickListener { toggleMusicPlayPause() }
+        musicNowPlayingPrevButton.setOnClickListener { playAdjacentTrack(-1) }
+        musicNowPlayingNextButton.setOnClickListener { playAdjacentTrack(1) }
+        musicNowPlayingSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                musicSeekBarDragging = true
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                musicSeekBarDragging = false
+                mediaController?.seekTo((seekBar?.progress ?: 0) * 1000L)
+            }
+        })
     }
 
     /**
@@ -752,6 +810,8 @@ class MainActivity : AppCompatActivity() {
         // area Game menjadi kosong saat user kembali dari TV.
         musicContainer.visibility = View.GONE
         musicPlayerBar.visibility = View.GONE
+        mainHandler.removeCallbacks(musicProgressRunnable)
+        musicNowPlayingContainer.visibility = View.GONE
         pendingMusicMediaItem = null
         musicResolving = false
         musicSearching = false
@@ -815,6 +875,7 @@ class MainActivity : AppCompatActivity() {
         // pastikan panel anak Game tidak semuanya GONE.
         musicContainer.visibility = View.GONE
         musicPlayerBar.visibility = View.GONE
+        musicNowPlayingContainer.visibility = View.GONE
         if (tebakGambarContainer.visibility != View.VISIBLE) {
             gameMenuContainer.visibility = View.VISIBLE
         }
@@ -899,16 +960,20 @@ class MainActivity : AppCompatActivity() {
                 mediaController = controller
                 controller.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        musicPlayPauseButton.text = if (isPlaying) "⏸" else "▶"
+                        val icon = if (isPlaying) "⏸" else "▶"
+                        musicPlayPauseButton.text = icon
+                        musicNowPlayingPlayPauseButton.text = icon
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY && controller.isPlaying) {
                             musicPlayPauseButton.text = "⏸"
+                            musicNowPlayingPlayPauseButton.text = "⏸"
                         }
                         if (playbackState == Player.STATE_ENDED) {
                             musicPlayerBar.visibility = View.GONE
                             musicPlayPauseButton.text = "▶"
+                            musicNowPlayingPlayPauseButton.text = "▶"
                             musicFeedbackText.text = "Lagu selesai."
                         }
                     }
@@ -928,7 +993,9 @@ class MainActivity : AppCompatActivity() {
                     controller.play()
                 }
 
-                musicPlayPauseButton.text = if (controller.isPlaying) "⏸" else "▶"
+                val initialIcon = if (controller.isPlaying) "⏸" else "▶"
+                musicPlayPauseButton.text = initialIcon
+                musicNowPlayingPlayPauseButton.text = initialIcon
             }, MoreExecutors.directExecutor())
         }.onFailure {
             mediaControllerFuture = null
@@ -952,6 +1019,7 @@ class MainActivity : AppCompatActivity() {
                 musicSearching = false
                 musicLoading.visibility = View.GONE
                 result.onSuccess { tracks ->
+                    lastMusicTracks = tracks
                     musicAdapter.submitList(tracks)
                     musicFeedbackText.text = "Ditemukan ${tracks.size} lagu. Tap buat muter."
                 }.onFailure {
@@ -994,6 +1062,68 @@ class MainActivity : AppCompatActivity() {
         musicPlayerTitle.text = track.title
         LogoLoader.load(track.thumbnailUrl, musicPlayerThumbnail)
         musicFeedbackText.text = "Memutar: ${track.title}"
+
+        currentMusicTrackIndex = lastMusicTracks.indexOf(track)
+        updateNowPlayingMeta(track)
+    }
+
+    /** Sinkronkan judul/sampul/subjudul ke layar Now Playing (kalau lagi kebuka). */
+    private fun updateNowPlayingMeta(track: MusicRepository.MusicTrack) {
+        currentMusicTrackSubtitle = track.author.ifBlank { track.channel }
+        currentMusicTrackThumbnailUrl = track.thumbnailUrl
+        musicNowPlayingTitle.text = track.title
+        musicNowPlayingSubtitle.text = currentMusicTrackSubtitle
+        LogoLoader.load(currentMusicTrackThumbnailUrl, musicNowPlayingArt)
+        musicNowPlayingSeekBar.progress = 0
+        musicNowPlayingPositionText.text = "0:00"
+        musicNowPlayingDurationText.text = "0:00"
+    }
+
+    /** Buka layar Now Playing full screen (tap mini player bar). */
+    private fun openMusicNowPlaying() {
+        if (mediaController == null && pendingMusicMediaItem == null) return
+        musicNowPlayingPlayPauseButton.text = musicPlayPauseButton.text
+        musicContainer.visibility = View.GONE
+        musicNowPlayingContainer.visibility = View.VISIBLE
+        mainHandler.removeCallbacks(musicProgressRunnable)
+        mainHandler.post(musicProgressRunnable)
+    }
+
+    /** Kecilin lagi ke layar search Musik. Lagu tetap lanjut muter. */
+    private fun closeMusicNowPlaying() {
+        mainHandler.removeCallbacks(musicProgressRunnable)
+        musicNowPlayingContainer.visibility = View.GONE
+        musicContainer.visibility = View.VISIBLE
+    }
+
+    /** Update seekbar + label waktu di layar Now Playing tiap tick. */
+    private fun updateMusicNowPlayingProgress() {
+        if (musicNowPlayingContainer.visibility != View.VISIBLE) return
+        val controller = mediaController ?: return
+        val duration = controller.duration
+        if (duration > 0) {
+            musicNowPlayingSeekBar.max = (duration / 1000).toInt()
+            if (!musicSeekBarDragging) {
+                musicNowPlayingSeekBar.progress = (controller.currentPosition / 1000).toInt()
+            }
+            musicNowPlayingDurationText.text = formatMillis(duration)
+        }
+        musicNowPlayingPositionText.text = formatMillis(controller.currentPosition)
+    }
+
+    /** Pindah ke lagu sebelum/sesudahnya di hasil pencarian terakhir. */
+    private fun playAdjacentTrack(delta: Int) {
+        if (lastMusicTracks.isEmpty() || currentMusicTrackIndex < 0) return
+        val newIndex = currentMusicTrackIndex + delta
+        if (newIndex !in lastMusicTracks.indices) return
+        playMusicTrack(lastMusicTracks[newIndex])
+    }
+
+    private fun formatMillis(millis: Long): String {
+        val totalSeconds = (millis / 1000).coerceAtLeast(0)
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return "%d:%02d".format(minutes, seconds)
     }
 
     /** Toggle play/pause lagu yang lagi aktif di mini player. */
