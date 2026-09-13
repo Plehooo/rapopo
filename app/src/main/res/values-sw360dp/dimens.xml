@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- dp: ukuran umum (ikon, margin, padding, tinggi elemen) -->
+    <dimen name="dp_1">1dp</dimen>
+    <dimen name="dp_2">2dp</dimen>
+    <dimen name="dp_3">3dp</dimen>
+    <dimen name="dp_4">4dp</dimen>
+    <dimen name="dp_5">4dp</dimen>
+    <dimen name="dp_6">5dp</dimen>
+    <dimen name="dp_7">6dp</dimen>
+    <dimen name="dp_8">7dp</dimen>
+    <dimen name="dp_9">8dp</dimen>
+    <dimen name="dp_10">9dp</dimen>
+    <dimen name="dp_11">10dp</dimen>
+    <dimen name="dp_12">11dp</dimen>
+    <dimen name="dp_14">12dp</dimen>
+    <dimen name="dp_15">13dp</dimen>
+    <dimen name="dp_16">14dp</dimen>
+    <dimen name="dp_18">16dp</dimen>
+    <dimen name="dp_20">18dp</dimen>
+    <dimen name="dp_22">19dp</dimen>
+    <dimen name="dp_24">21dp</dimen>
+    <dimen name="dp_28">25dp</dimen>
+    <dimen name="dp_30">26dp</dimen>
+    <dimen name="dp_32">28dp</dimen>
+    <dimen name="dp_34">30dp</dimen>
+    <dimen name="dp_38">33dp</dimen>
+    <dimen name="dp_40">35dp</dimen>
+    <dimen name="dp_42">37dp</dimen>
+    <dimen name="dp_46">40dp</dimen>
+    <dimen name="dp_48">42dp</dimen>
+    <dimen name="dp_52">46dp</dimen>
+    <dimen name="dp_56">49dp</dimen>
+    <dimen name="dp_64">56dp</dimen>
+    <dimen name="dp_68">60dp</dimen>
+    <dimen name="dp_72">63dp</dimen>
+    <dimen name="dp_76">67dp</dimen>
+    <dimen name="dp_78">69dp</dimen>
+    <dimen name="dp_86">76dp</dimen>
+    <dimen name="dp_180">158dp</dimen>
+    <dimen name="dp_230">202dp</dimen>
+
+    <!-- sp: ukuran teks (ikut skala font aksesibilitas user + tier layar ini) -->
+    <dimen name="sp_9">8sp</dimen>
+    <dimen name="sp_11">10sp</dimen>
+    <dimen name="sp_12">11sp</dimen>
+    <dimen name="sp_13">12sp</dimen>
+    <dimen name="sp_14">13sp</dimen>
+    <dimen name="sp_15">14sp</dimen>
+    <dimen name="sp_16">15sp</dimen>
+    <dimen name="sp_18">17sp</dimen>
+    <dimen name="sp_20">19sp</dimen>
+    <dimen name="sp_22">20sp</dimen>
+    <dimen name="sp_26">24sp</dimen>
+    <dimen name="sp_28">26sp</dimen>
+    <dimen name="sp_40">37sp</dimen>
+</resources>
