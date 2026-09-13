@@ -2,6 +2,7 @@ package com.bittv.iptv.ui
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Intent
 import android.animation.ObjectAnimator
 import android.content.res.Configuration
 import android.content.pm.ActivityInfo
@@ -745,16 +746,13 @@ class MainActivity : AppCompatActivity() {
 
     // ================= Tab TV <-> Game (satu layar, bukan pindah Activity) =================
 
-    /**
-     * TV harus menjadi mode eksklusif: begitu masuk TV, musik dihentikan total,
-     * mini-player disembunyikan, dan MediaSession dibersihkan supaya notification
-     * musik tidak menumpuk di atas UI TV.
-     */
+    /** Musik harus benar-benar dilepas saat kembali ke tab TV. */
     private fun stopMusicForTvMode() {
         musicContainer.visibility = View.GONE
         musicPlayerBar.visibility = View.GONE
         pendingMusicMediaItem = null
         musicResolving = false
+        musicFeedbackText.text = ""
 
         mediaController?.let { controller ->
             runCatching { controller.pause() }
@@ -762,8 +760,6 @@ class MainActivity : AppCompatActivity() {
             runCatching { controller.clearMediaItems() }
         }
 
-        // Pastikan service benar-benar mati sehingga notification media Android
-        // ikut lenyap, bukan berubah menjadi notification yang tetap menempel.
         runCatching {
             stopService(Intent(this, MusicPlayerService::class.java))
         }
@@ -771,8 +767,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showTvTab() {
         if (!isGameTabActive) return
-
-        // Saat kembali ke TV, musik tidak boleh tetap hidup/meninggalkan notification.
         stopMusicForTvMode()
         isGameTabActive = false
 
@@ -884,9 +878,7 @@ class MainActivity : AppCompatActivity() {
                         if (playbackState == Player.STATE_READY && controller.isPlaying) {
                             musicPlayPauseButton.text = "⏸"
                         }
-
                         if (playbackState == Player.STATE_ENDED) {
-                            // Lagu selesai 100%: mini-player di APK ikut hilang.
                             musicPlayerBar.visibility = View.GONE
                             musicPlayPauseButton.text = "▶"
                             musicFeedbackText.text = "Lagu selesai."
@@ -941,51 +933,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Ambil link mp3 buat lagu yang dipilih, terus langsung muterin lewat MusicPlayerService. */
+    /** Play lagu yang dipilih langsung dari field mp3 yang dikirim endpoint ytplay. */
     private fun playMusicTrack(track: MusicRepository.MusicTrack) {
-        if (musicResolving) return
-        musicResolving = true
-        musicFeedbackText.text = "Menyiapkan \"${track.title}\"..."
-        musicLoading.visibility = View.VISIBLE
-
-        backgroundExecutor.execute {
-            val result = MusicRepository.resolvePlayable(track.title)
-            mainHandler.post {
-                musicResolving = false
-                musicLoading.visibility = View.GONE
-                result.onSuccess { playable ->
-                    musicFeedbackText.text = "Ditemukan ${musicAdapter.itemCount} lagu. Tap buat muter."
-
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(playable.mp3Url)
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(playable.title)
-                                .setArtist(playable.author)
-                                .build()
-                        )
-                        .build()
-
-                    val controller = mediaController
-                    if (controller != null) {
-                        controller.setMediaItem(mediaItem)
-                        controller.prepare()
-                        controller.play()
-                    } else {
-                        // Controller masih dalam proses binding. Simpan item supaya
-                        // perintah play dieksekusi begitu service siap.
-                        pendingMusicMediaItem = mediaItem
-                        musicFeedbackText.text = "Player musik sedang disiapkan..."
-                    }
-
-                    musicPlayerBar.visibility = View.VISIBLE
-                    musicPlayerTitle.text = playable.title
-                    LogoLoader.load(playable.thumbnailUrl.ifBlank { track.thumbnailUrl }, musicPlayerThumbnail)
-                }.onFailure {
-                    musicFeedbackText.text = "Gagal muter: ${it.message ?: it.javaClass.simpleName}"
-                }
-            }
+        val mp3Url = track.mp3Url.trim()
+        if (mp3Url.isBlank()) {
+            musicFeedbackText.text = "Gagal: link MP3 tidak tersedia."
+            return
         }
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(mp3Url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.author.ifBlank { track.channel })
+                    .setArtworkUri(track.thumbnailUrl.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) })
+                    .build()
+            )
+            .build()
+
+        val controller = mediaController
+        if (controller != null) {
+            controller.setMediaItem(mediaItem)
+            controller.prepare()
+            controller.play()
+        } else {
+            pendingMusicMediaItem = mediaItem
+            connectMusicController()
+        }
+
+        musicPlayerBar.visibility = View.VISIBLE
+        musicPlayerTitle.text = track.title
+        LogoLoader.load(track.thumbnailUrl, musicPlayerThumbnail)
+        musicFeedbackText.text = "Memutar: ${track.title}"
     }
 
     /** Toggle play/pause lagu yang lagi aktif di mini player. */
