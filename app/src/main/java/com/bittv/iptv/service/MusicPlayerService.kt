@@ -54,9 +54,6 @@ class MusicPlayerService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        // Kalau lagu benar-benar selesai (STATE_ENDED), bersihkan item media
-        // dan hentikan service supaya media notification Android langsung hilang.
-        // Tanpa ini notification bisa tertinggal dalam keadaan 100% + tombol Play.
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
