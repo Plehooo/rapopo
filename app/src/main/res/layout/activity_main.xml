@@ -1064,12 +1064,13 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/dp_16"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center">
 
                 <TextView
                     android:id="@+id/musicNowPlayingPrevButton"
                     android:layout_width="@dimen/dp_48"
                     android:layout_height="@dimen/dp_48"
+                    android:layout_marginEnd="@dimen/dp_20"
                     android:background="@drawable/bg_button_outline"
                     android:clickable="true"
                     android:focusable="true"
@@ -1080,24 +1081,24 @@
 
                 <TextView
                     android:id="@+id/musicNowPlayingPlayPauseButton"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/dp_64"
-                    android:layout_weight="1"
-                    android:layout_marginStart="@dimen/dp_14"
-                    android:layout_marginEnd="@dimen/dp_14"
-                    android:background="@drawable/bg_button_game"
+                    android:layout_width="@dimen/dp_72"
+                    android:layout_height="@dimen/dp_72"
+                    android:background="@drawable/bg_button_game_round"
                     android:clickable="true"
                     android:focusable="true"
+                    android:elevation="@dimen/dp_2"
                     android:gravity="center"
+                    android:paddingStart="@dimen/dp_2"
                     android:text="▶"
                     android:textColor="@color/text_primary"
                     android:textStyle="bold"
-                    android:textSize="@dimen/sp_22" />
+                    android:textSize="@dimen/sp_28" />
 
                 <TextView
                     android:id="@+id/musicNowPlayingNextButton"
                     android:layout_width="@dimen/dp_48"
                     android:layout_height="@dimen/dp_48"
+                    android:layout_marginStart="@dimen/dp_20"
                     android:background="@drawable/bg_button_outline"
                     android:clickable="true"
                     android:focusable="true"
