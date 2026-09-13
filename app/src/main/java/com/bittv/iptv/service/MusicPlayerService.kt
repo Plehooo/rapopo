@@ -1,12 +1,17 @@
 package com.bittv.iptv.service
 
+import android.app.PendingIntent
+import android.content.Intent
+
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.Player
 import androidx.media3.common.C
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.bittv.iptv.ui.MainActivity
 
 /**
  * Service player musik terpisah dari player TV di MainActivity. Bedanya
@@ -54,7 +59,30 @@ class MusicPlayerService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        mediaSession = MediaSession.Builder(this, player).build()
+        // Klik area notifikasi / label LIVE TV membuka kembali MainActivity.
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val sessionActivity = PendingIntent.getActivity(
+            this,
+            7702,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                // Begitu lagu benar-benar habis, service dihentikan sehingga
+                // media notification ikut hilang dari panel notifikasi.
+                if (playbackState == Player.STATE_ENDED) {
+                    stopSelf()
+                }
+            }
+        })
+
+        mediaSession = MediaSession.Builder(this, player)
+            .setSessionActivity(sessionActivity)
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
