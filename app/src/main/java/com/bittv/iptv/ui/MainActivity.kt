@@ -62,6 +62,7 @@ import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.data.Channel
 import com.bittv.iptv.data.M3uParser
 import com.bittv.iptv.service.MusicPlayerService
+import com.bittv.iptv.ews.EwsLocationManager
 import com.bittv.iptv.util.AppUpdateChecker
 import com.bittv.iptv.util.ClearKeyUtil
 import com.bittv.iptv.util.EpgParser
@@ -76,10 +77,14 @@ import com.bittv.iptv.util.TebakGambarRepository
 import com.bittv.iptv.util.ThrottlingDataSource
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
+import com.bittv.iptv.worker.EwsUpdateWorker
 import com.bittv.iptv.worker.FreeNotificationWorker
 import com.bittv.iptv.worker.PlaylistUpdateWorker
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -442,6 +447,7 @@ class MainActivity : AppCompatActivity() {
     private fun configureUi() {
         PlaylistNotification.ensureChannel(this)
         requestNotificationPermissionIfNeeded()
+        requestLocationPermissionIfNeeded()
 
         setupList()
         setupControls()
@@ -1728,6 +1734,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Minta izin lokasi buat fitur EWS (peringatan gempa/cuaca/gunung berapi
+     *  terdekat). Kalau izin udah ada dari sebelumnya, langsung refresh lokasi
+     *  & jadwalin worker EWS-nya tanpa nampilin dialog lagi. */
+    private fun requestLocationPermissionIfNeeded() {
+        if (EwsLocationManager.hasPermission(this)) {
+            startEwsLocationTracking()
+            return
+        }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION),
+            LOCATION_PERMISSION_REQUEST
+        )
+    }
+
+    /** Ambil & simpan lokasi terkini sekali di awal (foreground only, sesuai
+     *  desain EwsLocationManager), lalu jadwalin worker EWS periodik supaya
+     *  notifikasi bahaya terdekat beneran jalan di background. */
+    private fun startEwsLocationTracking() {
+        CoroutineScope(Dispatchers.IO).launch {
+            EwsLocationManager.refreshAndSave(applicationContext)
+        }
+        EwsUpdateWorker.schedule(applicationContext)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == LOCATION_PERMISSION_REQUEST) {
+            // Tetap jadwalin worker walau user nolak izin; EwsRepository bakal
+            // balik "NoLocation" dengan aman sampai user kasih izin lewat
+            // Setelan HP nanti (gak bikin crash atau notif spam).
+            startEwsLocationTracking()
+        }
+    }
+
     private fun formatPlaybackError(error: PlaybackException): String = when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "LIVE TV • koneksi gagal"
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "LIVE TV • koneksi timeout"
@@ -1909,6 +1954,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val NOTIFICATION_PERMISSION_REQUEST = 4001
+        private const val LOCATION_PERMISSION_REQUEST = 4002
         private const val KEY_LAST_CHANNEL = "last_channel"
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
