@@ -14,10 +14,13 @@
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/dp_68"
+        android:layout_height="wrap_content"
+        android:minHeight="@dimen/dp_68"
         android:gravity="center_vertical"
         android:paddingStart="@dimen/dp_18"
         android:paddingEnd="@dimen/dp_18"
+        android:paddingTop="@dimen/dp_14"
+        android:paddingBottom="@dimen/dp_14"
         android:background="@drawable/bg_topbar"
         android:elevation="@dimen/dp_6">
 
