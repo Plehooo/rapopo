@@ -46,7 +46,8 @@ class MusicAdapter(
                 if (track.views.isNotBlank()) add("${track.views} views")
                 if (track.published.isNotBlank()) add(track.published)
             }
-            subtitle.text = meta.joinToString(" • ").ifBlank { track.channel }
+            val metadataText = meta.joinToString(" • ").ifBlank { track.channel }
+            subtitle.text = if (metadataText.isBlank()) "Tap untuk memutar" else metadataText
             LogoLoader.load(track.thumbnailUrl, thumbnail)
             itemView.setOnClickListener { onTrackClick(track) }
         }

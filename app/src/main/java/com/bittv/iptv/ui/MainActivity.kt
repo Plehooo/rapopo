@@ -933,39 +933,63 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Play lagu yang dipilih langsung dari field mp3 yang dikirim endpoint ytplay. */
+    /**
+     * User memilih satu hasil YTS/YouTube. Baru di titik ini kita resolve ke MP3
+     * lewat ytplay, lalu hasil resolve dikirim ke MediaSession/ExoPlayer.
+     */
     private fun playMusicTrack(track: MusicRepository.MusicTrack) {
-        val mp3Url = track.mp3Url.trim()
-        if (mp3Url.isBlank()) {
-            musicFeedbackText.text = "Gagal: link MP3 tidak tersedia."
-            return
+        if (musicSearching) return
+
+        musicSearching = true
+        musicLoading.visibility = View.VISIBLE
+        musicFeedbackText.text = "Menyiapkan: ${track.title}..."
+
+        backgroundExecutor.execute {
+            val resolved = MusicRepository.resolveToMp3(track)
+            mainHandler.post {
+                musicSearching = false
+                musicLoading.visibility = View.GONE
+
+                resolved.onSuccess { playable ->
+                    val mp3Url = playable.mp3Url.trim()
+                    if (mp3Url.isBlank()) {
+                        musicFeedbackText.text = "Gagal: link MP3 tidak tersedia."
+                        return@onSuccess
+                    }
+
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(mp3Url)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(playable.title)
+                                .setArtist(playable.author.ifBlank { playable.channel })
+                                .setArtworkUri(
+                                    playable.thumbnailUrl.takeIf { it.isNotBlank() }
+                                        ?.let { android.net.Uri.parse(it) }
+                                )
+                                .build()
+                        )
+                        .build()
+
+                    val controller = mediaController
+                    if (controller != null) {
+                        controller.setMediaItem(mediaItem)
+                        controller.prepare()
+                        controller.play()
+                    } else {
+                        pendingMusicMediaItem = mediaItem
+                        connectMusicController()
+                    }
+
+                    musicPlayerBar.visibility = View.VISIBLE
+                    musicPlayerTitle.text = playable.title
+                    LogoLoader.load(playable.thumbnailUrl, musicPlayerThumbnail)
+                    musicFeedbackText.text = "Memutar: ${playable.title}"
+                }.onFailure { error ->
+                    musicFeedbackText.text = "Gagal memuat lagu: ${error.message ?: error.javaClass.simpleName}"
+                }
+            }
         }
-
-        val mediaItem = MediaItem.Builder()
-            .setUri(mp3Url)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(track.title)
-                    .setArtist(track.author.ifBlank { track.channel })
-                    .setArtworkUri(track.thumbnailUrl.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) })
-                    .build()
-            )
-            .build()
-
-        val controller = mediaController
-        if (controller != null) {
-            controller.setMediaItem(mediaItem)
-            controller.prepare()
-            controller.play()
-        } else {
-            pendingMusicMediaItem = mediaItem
-            connectMusicController()
-        }
-
-        musicPlayerBar.visibility = View.VISIBLE
-        musicPlayerTitle.text = track.title
-        LogoLoader.load(track.thumbnailUrl, musicPlayerThumbnail)
-        musicFeedbackText.text = "Memutar: ${track.title}"
     }
 
     /** Toggle play/pause lagu yang lagi aktif di mini player. */
