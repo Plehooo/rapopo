@@ -933,10 +933,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * User memilih satu hasil YTS/YouTube. Baru di titik ini kita resolve ke MP3
-     * lewat ytplay, lalu hasil resolve dikirim ke MediaSession/ExoPlayer.
-     */
+    /** Resolve hasil YouTube ke MP3 saat user menekan salah satu hasil, lalu play. */
     private fun playMusicTrack(track: MusicRepository.MusicTrack) {
         if (musicSearching) return
 
@@ -986,7 +983,8 @@ class MainActivity : AppCompatActivity() {
                     LogoLoader.load(playable.thumbnailUrl, musicPlayerThumbnail)
                     musicFeedbackText.text = "Memutar: ${playable.title}"
                 }.onFailure { error ->
-                    musicFeedbackText.text = "Gagal memuat lagu: ${error.message ?: error.javaClass.simpleName}"
+                    musicFeedbackText.text =
+                        "Gagal memuat lagu: ${error.message ?: error.javaClass.simpleName}"
                 }
             }
         }
