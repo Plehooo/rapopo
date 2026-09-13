@@ -58,8 +58,8 @@ object EwsLocationManager {
                 manager.getCurrentLocation(
                     provider,
                     cancellationSignal,
-                    { location -> if (continuation.isActive) continuation.resume(location) },
-                    ContextCompat.getMainExecutor(context)
+                    ContextCompat.getMainExecutor(context),
+                    { location -> if (continuation.isActive) continuation.resume(location) }
                 )
             } catch (_: Throwable) {
                 if (continuation.isActive) continuation.resume(null)
