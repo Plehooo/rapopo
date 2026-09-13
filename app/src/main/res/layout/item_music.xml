@@ -15,8 +15,8 @@
 
     <ImageView
         android:id="@+id/musicThumbnail"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="78dp"
+        android:layout_height="78dp"
         android:scaleType="centerCrop"
         android:background="@drawable/bg_input"
         android:contentDescription="Sampul lagu" />
@@ -42,18 +42,19 @@
             android:id="@+id/musicSubtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:maxLines="1"
+            android:layout_marginTop="6dp"
+            android:maxLines="2"
             android:ellipsize="end"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/musicPlayIcon"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_marginStart="6dp"
+        android:gravity="center"
         android:text="▶"
         android:textColor="@color/game_accent_light"
         android:textStyle="bold"
