@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "109679532775",
+    "firebase_url": "https://game-onlien-2f773-default-rtdb.firebaseio.com",
+    "project_id": "game-onlien-2f773",
+    "storage_bucket": "game-onlien-2f773.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:109679532775:android:b172deaf0bfcab6b832042",
+        "android_client_info": {
+          "package_name": "com.bittv.iptv"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "109679532775-mvvttd05pv4haum9f7sm6u9aj5tqivuu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIvkyMJuZblh0Ex_39uKZMQOvy6xnwY6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "109679532775-mvvttd05pv4haum9f7sm6u9aj5tqivuu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
