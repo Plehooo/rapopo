@@ -24,6 +24,7 @@ class ChannelAdapter(
 ) : RecyclerView.Adapter<ChannelAdapter.ChannelViewHolder>() {
 
     private val items = mutableListOf<Channel>()
+    private val viewerCounts = mutableMapOf<String, Int>()
     private var lastAnimatedPosition = -1
 
     fun submitList(channels: List<Channel>) {
@@ -35,6 +36,22 @@ class ChannelAdapter(
 
     fun currentItems(): List<Channel> = items.toList()
 
+    fun updateViewerCounts(counts: Map<String, Int>) {
+        val changedPositions = mutableListOf<Int>()
+        for (index in items.indices) {
+            val oldCount = viewerCounts[items[index].id] ?: 0
+            val newCount = counts[items[index].id] ?: 0
+            if (oldCount != newCount) changedPositions += index
+        }
+
+        viewerCounts.clear()
+        viewerCounts.putAll(counts)
+
+        changedPositions.forEach { position ->
+            if (position in items.indices) notifyItemChanged(position, PAYLOAD_VIEWERS)
+        }
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChannelViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_channel, parent, false)
@@ -44,6 +61,18 @@ class ChannelAdapter(
     override fun onBindViewHolder(holder: ChannelViewHolder, position: Int) {
         holder.bind(items[position])
         animateEntrance(holder.itemView, position)
+    }
+
+    override fun onBindViewHolder(
+        holder: ChannelViewHolder,
+        position: Int,
+        payloads: MutableList<Any>
+    ) {
+        if (payloads.contains(PAYLOAD_VIEWERS)) {
+            holder.bindViewerCount(items[position])
+        } else {
+            super.onBindViewHolder(holder, position, payloads)
+        }
     }
 
     /** Pas row discroll keluar layar dan di-recycle, matiin animasi dulu —
@@ -84,6 +113,8 @@ class ChannelAdapter(
         private val group: TextView = itemView.findViewById(R.id.channelGroup)
         private val live: TextView = itemView.findViewById(R.id.channelLive)
         private val nowPlaying: TextView = itemView.findViewById(R.id.channelNowPlaying)
+        private val viewerBadge: View = itemView.findViewById(R.id.viewerBadge)
+        private val viewerCount: TextView = itemView.findViewById(R.id.viewerCount)
         private val favorite: ImageButton = itemView.findViewById(R.id.favoriteButton)
         private var liveAnimator: ObjectAnimator? = null
 
@@ -109,6 +140,7 @@ class ChannelAdapter(
             val selected = isSelected(channel)
             itemView.isSelected = selected
             nowPlaying.visibility = if (selected) View.VISIBLE else View.GONE
+            bindViewerCount(channel)
 
             val favorited = isFavorite(channel)
             favorite.setImageResource(
@@ -154,6 +186,12 @@ class ChannelAdapter(
         }
 
         /** Denyut alpha pelan biar badge LIVE keliatan "hidup", bukan teks statis. */
+        fun bindViewerCount(channel: Channel) {
+            val count = viewerCounts[channel.id] ?: 0
+            viewerBadge.visibility = if (count > 0) View.VISIBLE else View.GONE
+            viewerCount.text = count.toString()
+        }
+
         private fun pulseLive(view: TextView) {
             stopLivePulse()
             view.alpha = 1f
@@ -198,5 +236,9 @@ class ChannelAdapter(
                 "indosiar" -> Color.rgb(30, 110, 180)
                 else -> Color.rgb(45, 45, 58)
             }
+    }
+
+    companion object {
+        private const val PAYLOAD_VIEWERS = "viewer-count"
     }
 }

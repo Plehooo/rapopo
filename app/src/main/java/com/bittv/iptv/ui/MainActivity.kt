@@ -75,6 +75,7 @@ import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
 import com.bittv.iptv.util.TebakGambarRepository
 import com.bittv.iptv.util.ThrottlingDataSource
+import com.bittv.iptv.util.ViewerPresenceManager
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
 import com.bittv.iptv.worker.EwsUpdateWorker
@@ -94,6 +95,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var config: AppConfig
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var epgRepository: EpgRepository
+    private lateinit var viewerPresence: ViewerPresenceManager
 
     private lateinit var groupSpinner: Spinner
     private lateinit var statusText: TextView
@@ -262,6 +264,17 @@ class MainActivity : AppCompatActivity() {
         restoreState()
         configureBackHandling()
         configureUi()
+
+        viewerPresence = ViewerPresenceManager(this) { counts ->
+            mainHandler.post {
+                if (!isFinishing && !isDestroyed && ::channelAdapter.isInitialized) {
+                    channelAdapter.updateViewerCounts(counts)
+                }
+            }
+        }
+        viewerPresence.setKnownChannels(allChannels)
+        viewerPresence.start()
+
         scheduleBackgroundWorkers()
 
         startupOverlay.visibility = View.VISIBLE
@@ -657,6 +670,9 @@ class MainActivity : AppCompatActivity() {
         val oldUrl = activeChannel?.streamUrl
         allChannels.clear()
         allChannels.addAll(channels)
+        if (::viewerPresence.isInitialized) {
+            viewerPresence.setKnownChannels(allChannels)
+        }
 
         if (!oldUrl.isNullOrBlank()) {
             activeChannel = allChannels.firstOrNull { it.streamUrl == oldUrl }
@@ -893,6 +909,7 @@ class MainActivity : AppCompatActivity() {
         // Video otomatis berhenti selama di tab Game, hemat data/baterai.
         player?.playWhenReady = false
         player?.pause()
+        viewerPresence.setWatching(null, false)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // Channel list-nya lagi disembunyikan total (GONE), jadi animasi
@@ -1472,6 +1489,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (currentPlayer !== player) return
+                if (isPlaying) {
+                    activeChannel?.id?.let { viewerPresence.setWatching(it, true) }
+                } else {
+                    viewerPresence.setWatching(null, false)
+                }
+
                 // Layar cuma dipaksa nyala pas video BENERAN lagi diputar
                 // (bukan sepanjang app dibuka) — hemat baterai pas cuma
                 // buka daftar channel, baca, atau lagi main game.
@@ -1489,6 +1513,7 @@ class MainActivity : AppCompatActivity() {
         isRetry: Boolean,
         saveAsLast: Boolean
     ) {
+        viewerPresence.setWatching(null, false)
         activeChannel = channel
         if (!isRetry) automaticRetries = 0
         if (saveAsLast) saveHistory(channel)
@@ -1863,6 +1888,7 @@ class MainActivity : AppCompatActivity() {
          */
         player?.playWhenReady = false
         player?.pause()
+        viewerPresence.setWatching(null, false)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         super.onStop()
@@ -1940,6 +1966,7 @@ class MainActivity : AppCompatActivity() {
         runCatching { old?.stop() }
         runCatching { old?.release() }
         playerView.player = null
+        if (::viewerPresence.isInitialized) viewerPresence.stop()
         epgRepository.shutdown()
 
         // Cuma lepas KONEKSI controller-nya, bukan matiin service musiknya —
