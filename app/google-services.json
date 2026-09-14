@@ -8,9 +8,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:109679532775:android:b172deaf0bfcab6b832042",
+        "mobilesdk_app_id": "1:109679532775:android:76345072837e2fe7832042",
         "android_client_info": {
-          "package_name": "com.bittv.iptv"
+          "package_name": "com.bittv.iptv.debug"
         }
       },
       "oauth_client": [
