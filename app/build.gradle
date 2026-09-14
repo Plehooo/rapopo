@@ -104,22 +104,10 @@ dependencies {
     implementation 'androidx.work:work-runtime-ktx:2.10.1'
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
 
-    // Real-time viewer presence/counts. Firebase is used only for presence;
-    // the existing playlist/player architecture remains unchanged.
-    implementation platform('com.google.firebase:firebase-bom:34.19.0')
-    implementation 'com.google.firebase:firebase-auth'
-    implementation 'com.google.firebase:firebase-database'
-
     def media3Version = '1.9.2'
     implementation "androidx.media3:media3-exoplayer:${media3Version}"
     implementation "androidx.media3:media3-exoplayer-hls:${media3Version}"
     implementation "androidx.media3:media3-exoplayer-dash:${media3Version}"
     implementation "androidx.media3:media3-ui:${media3Version}"
     implementation "androidx.media3:media3-session:${media3Version}"
-}
-
-// Keep local/debug builds working when Firebase has not been connected yet.
-// Put google-services.json in app/ to enable live viewer presence at runtime.
-if (file('google-services.json').exists()) {
-    apply plugin: 'com.google.gms.google-services'
 }
