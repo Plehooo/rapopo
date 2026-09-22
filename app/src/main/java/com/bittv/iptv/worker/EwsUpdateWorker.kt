@@ -74,7 +74,7 @@ class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : Coroutine
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 NOW_NAME,
-                ExistingWorkPolicy.REPLACE,
+                ExistingWorkPolicy.KEEP,
                 request
             )
         }

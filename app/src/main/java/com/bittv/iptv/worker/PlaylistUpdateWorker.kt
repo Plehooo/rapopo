@@ -1,6 +1,7 @@
 package com.bittv.iptv.worker
 
 import android.content.Context
+import android.content.Intent
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -65,6 +66,10 @@ class PlaylistUpdateWorker(
                         )
                     }
 
+                    applicationContext.sendBroadcast(
+                        Intent(ACTION_PLAYLIST_UPDATED).setPackage(applicationContext.packageName)
+                    )
+
                     Result.success(
                         workDataOf(
                             "updated" to true,
@@ -113,8 +118,30 @@ class PlaylistUpdateWorker(
         private const val INITIAL_NAME =
             "live_tv_playlist_initial"
 
+        private const val NOW_NAME =
+            "live_tv_playlist_now"
+
+        const val ACTION_PLAYLIST_UPDATED =
+            "com.bittv.iptv.action.PLAYLIST_UPDATED"
+
         private const val MAX_RETRY_COUNT =
             3
+
+        fun enqueueNow(context: Context, reason: String = "manual") {
+            if (!ConfigStore.load(context).autoUpdateEnabled) return
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val request = OneTimeWorkRequestBuilder<PlaylistUpdateWorker>()
+                .setInputData(workDataOf("reason" to reason))
+                .setConstraints(constraints)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                NOW_NAME,
+                ExistingWorkPolicy.KEEP,
+                request
+            )
+        }
 
         fun schedule(
             context: Context

@@ -17,7 +17,8 @@ import java.util.Locale
 object EwsNotification {
     private const val CHANNEL_ID = "bmkg_ews"
     private const val PREFS = "bittv_bmkg_ews"
-    private const val KEY_LAST_SIGNATURE = "last_signature"
+    private const val KEY_INITIALIZED = "initialized"
+    private const val KEY_SEEN_EVENTS = "seen_events"
     private const val NOTIFICATION_ID = 7401
 
     fun ensureChannel(context: Context) {
@@ -31,20 +32,43 @@ object EwsNotification {
         }
     }
 
+    @Synchronized
     fun showNearbyOnce(context: Context, hazards: List<EwsHazard>) {
-        if (hazards.isEmpty()) return
-        if (android.os.Build.VERSION.SDK_INT >= 33 &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-
-        val selected = hazards.sortedWith(
-            compareByDescending<EwsHazard> { it.severity.weight }.thenBy { it.distanceKm }
-        ).take(MAX_LINES)
-        val signature = selected.joinToString("|") { "${it.id}:${it.severity}:${it.distanceKm.toInt()}" }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_LAST_SIGNATURE, null) == signature) return
+        val seen = getSeenEvents(prefs).toMutableSet()
+        val initialized = prefs.getBoolean(KEY_INITIALIZED, false)
+
+        // An empty successful scan is still a valid baseline. This prevents
+        // the first real hazard after installation from being swallowed as
+        // "old" simply because the first check happened on a quiet day.
+        if (hazards.isEmpty()) {
+            if (!initialized) prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
+            return
+        }
+
+        val freshHazards = hazards
+            .sortedWith(compareByDescending<EwsHazard> { it.severity.weight }.thenBy { it.distanceKm })
+            .filter { stableEventKey(it) !in seen }
+            .take(MAX_LINES)
+
+        // First successful scan is a baseline only. Existing earthquakes /
+        // weather / volcano reports never generate a surprise notification on
+        // a fresh install (or after permissions are first granted).
+        if (!initialized) {
+            hazards.forEach { seen.add(stableEventKey(it)) }
+            saveSeenEvents(prefs, seen)
+            prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
+            return
+        }
+
+        if (freshHazards.isEmpty()) return
+
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
 
         ensureChannel(context)
-        val body = selected.joinToString("\n") { formatHazard(it) } +
+        val body = freshHazards.joinToString("\n") { formatHazard(it) } +
             "\n\nSumber: BMKG / MAGMA-PVMBG. Periksa kanal resmi untuk arahan keselamatan terbaru."
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -57,7 +81,7 @@ object EwsNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val highest = selected.first()
+        val highest = freshHazards.first()
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_app_logo)
             .setLargeIcon(NotificationBranding.largeIcon(context))
@@ -72,7 +96,24 @@ object EwsNotification {
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-        prefs.edit().putString(KEY_LAST_SIGNATURE, signature).apply()
+        freshHazards.forEach { seen.add(stableEventKey(it)) }
+        saveSeenEvents(prefs, seen)
+        prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
+    }
+
+    private fun stableEventKey(hazard: EwsHazard): String =
+        hazard.id.trim().lowercase(Locale.US)
+
+    private fun getSeenEvents(prefs: android.content.SharedPreferences): List<String> =
+        prefs.getString(KEY_SEEN_EVENTS, null)
+            ?.lineSequence()
+            ?.filter { it.isNotBlank() }
+            ?.toList()
+            ?: emptyList()
+
+    private fun saveSeenEvents(prefs: android.content.SharedPreferences, values: Set<String>) {
+        val compact = values.toList().takeLast(256)
+        prefs.edit().putString(KEY_SEEN_EVENTS, compact.joinToString("\n")).apply()
     }
 
     private fun formatHazard(hazard: EwsHazard): String {

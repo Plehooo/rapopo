@@ -39,6 +39,7 @@ object PlaylistNotification {
         }
     }
 
+    @Synchronized
     fun showUpdatedOnce(
         context: Context,
         revision: Long,

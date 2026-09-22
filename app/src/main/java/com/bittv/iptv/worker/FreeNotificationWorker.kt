@@ -41,7 +41,7 @@ class FreeNotificationWorker(
         private const val PERIODIC_NAME = "live_tv_free_notification_periodic"
         private const val INITIAL_NAME = "live_tv_free_notification_initial"
         private const val MAX_RETRY_COUNT = 3
-        private const val CHECK_INTERVAL_MINUTES = 30L
+        private const val CHECK_INTERVAL_MINUTES = 360L
 
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
@@ -69,7 +69,7 @@ class FreeNotificationWorker(
                 .build()
 
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(INITIAL_NAME, ExistingWorkPolicy.REPLACE, initial)
+                .enqueueUniqueWork(INITIAL_NAME, ExistingWorkPolicy.KEEP, initial)
         }
     }
 }

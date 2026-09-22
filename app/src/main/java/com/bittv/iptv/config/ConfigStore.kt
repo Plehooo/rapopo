@@ -36,8 +36,8 @@ object ConfigStore {
     fun load(context: Context): AppConfig = AppConfig(
         appName = "LIVE TV",
         producer = "ADITIYA",
-        version = "3.0.0",
-        playlistUrl = "https://raw.githubusercontent.com/Plehooo/ditz/refs/heads/main/adit.m3u",
+        version = "3.1.3",
+        playlistUrl = RemoteSyncConfig.PLAYLIST_URL,
         foregroundCheckSeconds = 60L,
         backgroundCheckMinutes = 15L,
         firstBackgroundDelaySeconds = 10L,

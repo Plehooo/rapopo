@@ -11,7 +11,11 @@ import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Multi-hazard EWS aggregator.
@@ -196,12 +200,103 @@ class EwsRepository(private val context: Context) {
         }
 
         private fun distanceTo(location: EwsLocationStore.SavedLocation, area: GeoArea): Double {
+            // CAP polygons describe the actual warning boundary. The old
+            // implementation converted every polygon into a large bounding
+            // circle, which could flag users far outside the warned area.
+            if (area.polygon.size >= 3) {
+                if (isInsidePolygon(location.latitude, location.longitude, area.polygon)) {
+                    return 0.0
+                }
+                return distanceToPolygonBoundaryKm(
+                    location.latitude,
+                    location.longitude,
+                    area.polygon
+                )
+            }
+
             val center = EwsDistance.kilometers(location.latitude, location.longitude, area.lat, area.lon)
             return max(0.0, center - area.radiusKm)
         }
+
+        private fun isInsidePolygon(
+            latitude: Double,
+            longitude: Double,
+            polygon: List<GeoPoint>
+        ): Boolean {
+            var inside = false
+            var j = polygon.lastIndex
+            for (i in polygon.indices) {
+                val a = polygon[i]
+                val b = polygon[j]
+                val intersects =
+                    ((a.lon > longitude) != (b.lon > longitude)) &&
+                        (latitude < (b.lat - a.lat) * (longitude - a.lon) /
+                            ((b.lon - a.lon).takeUnless { abs(it) < 1e-12 } ?: 1e-12) + a.lat)
+                if (intersects) inside = !inside
+                j = i
+            }
+            return inside
+        }
+
+        private fun distanceToPolygonBoundaryKm(
+            latitude: Double,
+            longitude: Double,
+            polygon: List<GeoPoint>
+        ): Double {
+            if (polygon.size < 2) return Double.POSITIVE_INFINITY
+            var best = Double.POSITIVE_INFINITY
+            for (i in polygon.indices) {
+                val a = polygon[i]
+                val b = polygon[(i + 1) % polygon.size]
+                best = min(best, pointToSegmentKm(latitude, longitude, a, b))
+            }
+            return best
+        }
+
+        private fun pointToSegmentKm(
+            latitude: Double,
+            longitude: Double,
+            a: GeoPoint,
+            b: GeoPoint
+        ): Double {
+            // Local equirectangular projection is sufficiently accurate for
+            // CAP warning polygons while avoiding expensive spherical segment
+            // math for every device-location check.
+            val radiusKm = 6371.0088
+            val lat0 = Math.toRadians(latitude)
+            val cosLat = cos(lat0)
+
+            fun x(lon: Double): Double = Math.toRadians(lon - longitude) * cosLat * radiusKm
+            fun y(lat: Double): Double = Math.toRadians(lat - latitude) * radiusKm
+
+            val ax = x(a.lon)
+            val ay = y(a.lat)
+            val bx = x(b.lon)
+            val by = y(b.lat)
+            val dx = bx - ax
+            val dy = by - ay
+            val lengthSquared = dx * dx + dy * dy
+
+            val t = if (lengthSquared <= 1e-12) {
+                0.0
+            } else {
+                ((-ax) * dx + (-ay) * dy) / lengthSquared
+            }.coerceIn(0.0, 1.0)
+
+            val px = ax + t * dx
+            val py = ay + t * dy
+            return sqrt(px * px + py * py)
+        }
     }
 
-    private data class GeoArea(val lat: Double, val lon: Double, val radiusKm: Double)
+    private data class GeoPoint(val lat: Double, val lon: Double)
+
+    private data class GeoArea(
+        val lat: Double,
+        val lon: Double,
+        val radiusKm: Double,
+        val polygon: List<GeoPoint> = emptyList()
+    )
 
     private fun parseCap(xml: String): CapAlert? {
         return runCatching {
@@ -263,19 +358,38 @@ class EwsRepository(private val context: Context) {
     }
 
     private fun parsePolygonCenter(value: String): GeoArea? {
-        val points = value.trim().split(Regex("\\s+")).mapNotNull {
-            val p = it.split(',')
-            if (p.size != 2) null else {
+        val rawPoints = value.trim().split(Regex("\\s+")).mapNotNull { token ->
+            val p = token.split(',')
+            if (p.size != 2) {
+                null
+            } else {
                 val lat = p[0].toDoubleOrNull()
                 val lon = p[1].toDoubleOrNull()
-                if (lat == null || lon == null) null else Pair(lat, lon)
+                if (lat == null || lon == null ||
+                    lat !in -90.0..90.0 || lon !in -180.0..180.0
+                ) {
+                    null
+                } else {
+                    GeoPoint(lat, lon)
+                }
             }
         }
-        if (points.isEmpty()) return null
-        val lat = points.map { it.first }.average()
-        val lon = points.map { it.second }.average()
-        val radius = points.maxOfOrNull { EwsDistance.kilometers(lat, lon, it.first, it.second) } ?: 0.0
-        return GeoArea(lat, lon, radius)
+
+        // CAP polygon strings commonly repeat the first vertex as the last
+        // one. Remove that duplicate because distance/containment already
+        // closes the polygon automatically.
+        val points = if (rawPoints.size >= 4 && rawPoints.first() == rawPoints.last()) {
+            rawPoints.dropLast(1)
+        } else {
+            rawPoints
+        }
+
+        if (points.size < 3) return null
+
+        val lat = points.map { it.lat }.average()
+        val lon = points.map { it.lon }.average()
+        val radius = points.maxOfOrNull { EwsDistance.kilometers(lat, lon, it.lat, it.lon) } ?: 0.0
+        return GeoArea(lat, lon, radius, polygon = points)
     }
 
     private fun fetchVolcanoAlerts(

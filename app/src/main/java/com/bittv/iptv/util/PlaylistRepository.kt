@@ -41,20 +41,51 @@ class PlaylistRepository(
         )
 
     /**
-     * Remote-only playlist loading.
+     * Remote-first playlist loading.
      *
-     * The M3U content is never written to disk. It is fetched from the
-     * configured URL and kept only in memory for parsing/playback.
+     * The remote URL remains the source of truth. The latest validated M3U is
+     * additionally kept in app-private cache so background syncs can update
+     * an already-open UI without a second network round-trip.
      */
     fun ensureLocal(): PlaylistSnapshot? {
-        return fetchRemote().getOrNull()
+        val fresh = fetchRemote().getOrNull() ?: return PlaylistCacheStore.read(appContext)?.let {
+            PlaylistSnapshot(
+                content = it,
+                fingerprint = NativePlaylist.safeFingerprint(it),
+                etag = null,
+                lastModified = null,
+                revision = statePrefs.getLong(KEY_REVISION, 0L),
+                fromCache = true,
+                notModified = false
+            )
+        }
+
+        // First successful launch establishes a silent baseline. After that,
+        // update detection belongs to checkForUpdate()/FCM so opening the app
+        // does not turn an old remote notification into a fake new event.
+        bootstrapIfNeeded(fresh)
+        PlaylistCacheStore.write(appContext, fresh.content, fresh.fingerprint)
+        return fresh
+    }
+
+    private fun bootstrapIfNeeded(snapshot: PlaylistSnapshot) {
+        if (statePrefs.getString(KEY_FINGERPRINT, null) != null) return
+        val parsed = runCatching { M3uParser.parse(snapshot.content, config.playlistUrl) }.getOrDefault(emptyList())
+        if (parsed.size < config.minimumChannels) return
+        val index = PlaylistDiffCalculator.buildIndex(parsed)
+        statePrefs.edit()
+            .putString(KEY_FINGERPRINT, snapshot.fingerprint)
+            .putLong(KEY_REVISION, 1L)
+            .putString(KEY_ETAG, snapshot.etag)
+            .putString(KEY_LAST_MODIFIED, snapshot.lastModified)
+            .putString(KEY_CHANNEL_INDEX, JSONObject(index).toString())
+            .apply()
     }
 
     /**
      * Checks the configured remote playlist directly.
-     * No PlaylistStore/cache file is used. A small fingerprint/revision is
-     * kept only to detect changes across background worker runs; the M3U
-     * itself is never persisted.
+     * A small fingerprint/index detects changes across worker instances and
+     * the latest validated M3U is cached privately for instant foreground apply.
      */
     fun checkForUpdate(): PlaylistUpdateResult {
         val previousFingerprint =
@@ -68,6 +99,7 @@ class PlaylistRepository(
                 previousFingerprint != fingerprint
 
             if (!changed) {
+                PlaylistCacheStore.write(appContext, fetched.content, fetched.fingerprint)
                 return PlaylistUpdateResult.NotModified(
                     fetched.copy(
                         revision = statePrefs.getLong(KEY_REVISION, 0L),
@@ -114,6 +146,8 @@ class PlaylistRepository(
                 fromCache = false,
                 notModified = false
             )
+
+            PlaylistCacheStore.write(appContext, snapshot.content, snapshot.fingerprint)
 
             statePrefs.edit()
                 .putString(KEY_FINGERPRINT, fingerprint)

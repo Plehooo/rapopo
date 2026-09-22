@@ -3,6 +3,9 @@ package com.bittv.iptv.ui
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.animation.ObjectAnimator
 import android.content.res.Configuration
 import android.content.pm.ActivityInfo
@@ -29,9 +32,11 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -59,6 +64,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bittv.iptv.R
 import com.bittv.iptv.config.AppConfig
 import com.bittv.iptv.config.ConfigStore
+import com.bittv.iptv.config.RemoteSyncEnrollment
 import com.bittv.iptv.data.Channel
 import com.bittv.iptv.data.M3uParser
 import com.bittv.iptv.service.MusicPlayerService
@@ -66,6 +72,7 @@ import com.bittv.iptv.ews.EwsLocationManager
 import com.bittv.iptv.util.AppUpdateChecker
 import com.bittv.iptv.util.ClearKeyUtil
 import com.bittv.iptv.util.EpgParser
+import com.bittv.iptv.util.FreeNotification
 import com.bittv.iptv.util.EpgRepository
 import com.bittv.iptv.util.HeaderParser
 import com.bittv.iptv.util.LogoLoader
@@ -73,6 +80,8 @@ import com.bittv.iptv.util.MusicRepository
 import com.bittv.iptv.util.PlaylistNotification
 import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
+import com.bittv.iptv.util.PlaylistCacheStore
+import com.bittv.iptv.worker.RemoteSyncWorker
 import com.bittv.iptv.util.TebakGambarRepository
 import com.bittv.iptv.util.ThrottlingDataSource
 import com.bittv.iptv.util.ViewerPresenceManager
@@ -224,14 +233,27 @@ class MainActivity : AppCompatActivity() {
     private var playbackToken = 0L
     private var epgProgrammes = emptyList<com.bittv.iptv.util.EpgProgramme>()
     private var retryVisibleBeforeFullscreen = false
+    private var playlistReceiverRegistered = false
 
     // BUG FIX: KEY_LAST_CHANNEL sudah lama disimpan di saveHistory() tapi
     // tidak pernah dibaca ulang, jadi app selalu autoplay channel PERTAMA
     // di playlist alih-alih channel terakhir yang ditonton user. Nilainya
     // ditampung di sini pas restoreState(), dipakai sekali pas autoplay awal.
     private var pendingLastChannelUrl: String? = null
+    private var pendingLastChannelId: String? = null
+    private var pendingLastChannelEpgId: String? = null
+    private var pendingLastChannelName: String? = null
+    private var pendingLastChannelGroup: String? = null
 
     private val prefs by lazy { getSharedPreferences("bittv", MODE_PRIVATE) }
+
+
+    private val playlistSyncReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent?) {
+            if (intent?.action != PlaylistUpdateWorker.ACTION_PLAYLIST_UPDATED) return
+            loadCachedPlaylistAfterRemoteSync()
+        }
+    }
 
     private val foregroundCheckRunnable = object : Runnable {
         override fun run() {
@@ -502,6 +524,7 @@ class MainActivity : AppCompatActivity() {
         PlaylistUpdateWorker.schedule(this)
         AppUpdateWorker.schedule(this)
         EpgUpdateWorker.schedule(this)
+        // FreeNotificationWorker remains only as a low-frequency fallback.
         FreeNotificationWorker.schedule(this)
         checkMandatoryUpdateOnLaunch()
     }
@@ -598,6 +621,18 @@ class MainActivity : AppCompatActivity() {
                 EpgUpdateWorker.scheduleInitialNow(this@MainActivity)
 
                 startupComplete = true
+                // Finish the announcement baseline BEFORE joining the shared
+                // FCM topic. This closes the tiny fresh-install race where a
+                // currently-existing GitHub notif could otherwise be mistaken
+                // for a brand-new announcement. The baseline fetch runs off
+                // the UI thread and does not block first-render.
+                backgroundExecutor.execute {
+                    val baseline = FreeNotification.establishBaseline(applicationContext)
+                    if (baseline.isSuccess) {
+                        RemoteSyncEnrollment.markEnrolled(applicationContext)
+                        RemoteSyncWorker.subscribeToTopic(applicationContext)
+                    }
+                }
                 startupOverlay.visibility = View.GONE
                 channelList.visibility = View.VISIBLE
                 playerContainer.visibility = View.VISIBLE
@@ -617,6 +652,7 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         val resumeChannel = pendingLastChannelUrl
                             ?.let { url -> parsed.firstOrNull { it.streamUrl == url } }
+                            ?: findEquivalentStoredLastChannel(parsed)
                             ?: parsed.first()
                         playChannel(
                             resumeChannel,
@@ -662,20 +698,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun findEquivalentChannel(old: Channel, candidates: List<Channel>): Channel? {
+        val epg = old.epgId?.trim()?.lowercase(Locale.getDefault()).orEmpty()
+        val id = old.id.trim().lowercase(Locale.getDefault())
+        val name = old.name.trim().lowercase(Locale.getDefault())
+        val group = old.group.trim().lowercase(Locale.getDefault())
+
+        return candidates.firstOrNull {
+            epg.isNotBlank() && it.epgId?.trim()?.lowercase(Locale.getDefault()) == epg
+        } ?: candidates.firstOrNull {
+            id.isNotBlank() && !id.startsWith("channel-") &&
+                it.id.trim().lowercase(Locale.getDefault()) == id
+        } ?: candidates.firstOrNull {
+            it.name.trim().lowercase(Locale.getDefault()) == name &&
+                it.group.trim().lowercase(Locale.getDefault()) == group
+        } ?: candidates.firstOrNull {
+            it.name.trim().lowercase(Locale.getDefault()) == name
+        }
+    }
+
+    private fun findEquivalentStoredLastChannel(candidates: List<Channel>): Channel? {
+        val epg = pendingLastChannelEpgId?.trim()?.lowercase(Locale.getDefault()).orEmpty()
+        val id = pendingLastChannelId?.trim()?.lowercase(Locale.getDefault()).orEmpty()
+        val name = pendingLastChannelName?.trim()?.lowercase(Locale.getDefault()).orEmpty()
+        val group = pendingLastChannelGroup?.trim()?.lowercase(Locale.getDefault()).orEmpty()
+
+        return candidates.firstOrNull {
+            epg.isNotBlank() && it.epgId?.trim()?.lowercase(Locale.getDefault()) == epg
+        } ?: candidates.firstOrNull {
+            id.isNotBlank() && !id.startsWith("channel-") &&
+                it.id.trim().lowercase(Locale.getDefault()) == id
+        } ?: candidates.firstOrNull {
+            name.isNotBlank() && it.name.trim().lowercase(Locale.getDefault()) == name &&
+                (group.isBlank() || it.group.trim().lowercase(Locale.getDefault()) == group)
+        }
+    }
+
     private fun applyParsedChannels(content: String, channels: List<Channel>) {
         if (channels.isEmpty()) return
 
         updateEpgFromPlaylist(content)
 
-        val oldUrl = activeChannel?.streamUrl
+        val oldChannel = activeChannel
+        val oldChannels = allChannels.toList()
+        migrateFavoriteUrls(oldChannels, channels)
+
         allChannels.clear()
         allChannels.addAll(channels)
         if (::viewerPresence.isInitialized) {
             viewerPresence.setKnownChannels(allChannels)
         }
 
-        if (!oldUrl.isNullOrBlank()) {
-            activeChannel = allChannels.firstOrNull { it.streamUrl == oldUrl }
+        if (oldChannel != null) {
+            val matched = findEquivalentChannel(oldChannel, allChannels)
+            activeChannel = matched
+            if (matched != null && matched.streamUrl != oldChannel.streamUrl) {
+                // Keep the remembered channel stable across an expiring URL/token
+                // so the next app launch resumes the same logical channel.
+                pendingLastChannelUrl = matched.streamUrl
+                persistLastChannelIdentity(matched)
+            }
         }
 
         renderGroups()
@@ -709,10 +791,15 @@ class MainActivity : AppCompatActivity() {
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
 
-                    val currentUrl = activeChannel?.streamUrl
+                    val oldChannel = activeChannel
+                    val shouldReconnect = startupComplete && !isGameTabActive && player != null
                     applyParsedChannels(result.snapshot.content, parsed)
-                    if (!currentUrl.isNullOrBlank()) {
-                        activeChannel = allChannels.firstOrNull { it.streamUrl == currentUrl }
+                    val replacement = oldChannel?.let { findEquivalentChannel(it, allChannels) }
+                    var autoReconnected = false
+                    if (replacement != null && oldChannel != null &&
+                        oldChannel.streamUrl != replacement.streamUrl && shouldReconnect) {
+                        playChannel(replacement, isRetry = false, saveAsLast = false)
+                        autoReconnected = true
                     }
 
                     if (config.notificationsEnabled && !result.firstRemoteSync) {
@@ -723,7 +810,35 @@ class MainActivity : AppCompatActivity() {
                             result.totalChannels
                         )
                     }
-                    statusText.text = "LIVE TV • ${result.totalChannels} channel"
+                    statusText.text = if (autoReconnected) {
+                        "LIVE TV • ${replacement?.name ?: "channel"} diperbarui otomatis"
+                    } else {
+                        "LIVE TV • ${result.totalChannels} channel"
+                    }
+                }
+            }
+        }
+    }
+
+    private fun loadCachedPlaylistAfterRemoteSync() {
+        backgroundExecutor.execute {
+            val content = PlaylistCacheStore.read(applicationContext) ?: return@execute
+            val parsed = runCatching {
+                M3uParser.parse(content, config.playlistUrl, emptyMap())
+            }.getOrElse { emptyList() }
+            if (parsed.isEmpty()) return@execute
+
+            mainHandler.post {
+                if (isFinishing || isDestroyed) return@post
+                val oldChannel = activeChannel
+                val shouldReconnect = startupComplete && !isGameTabActive && player != null
+                applyParsedChannels(content, parsed)
+
+                val replacement = oldChannel?.let { findEquivalentChannel(it, allChannels) }
+                if (replacement != null && oldChannel != null &&
+                    oldChannel.streamUrl != replacement.streamUrl && shouldReconnect) {
+                    playChannel(replacement, isRetry = false, saveAsLast = false)
+                    statusText.text = "LIVE TV • ${replacement.name} diperbarui otomatis"
                 }
             }
         }
@@ -1606,10 +1721,40 @@ class MainActivity : AppCompatActivity() {
         history.remove(channel.streamUrl)
         history.addFirst(channel.streamUrl)
         while (history.size > 30) history.removeLast()
-        prefs.edit()
-            .putString(KEY_HISTORY, history.joinToString("\n"))
+        pendingLastChannelUrl = channel.streamUrl
+        persistLastChannelIdentity(channel, includeHistory = true)
+    }
+
+    private fun persistLastChannelIdentity(channel: Channel, includeHistory: Boolean = false) {
+        val editor = prefs.edit()
             .putString(KEY_LAST_CHANNEL, channel.streamUrl)
-            .apply()
+            .putString(KEY_LAST_CHANNEL_ID, channel.id)
+            .putString(KEY_LAST_CHANNEL_EPG_ID, channel.epgId)
+            .putString(KEY_LAST_CHANNEL_NAME, channel.name)
+            .putString(KEY_LAST_CHANNEL_GROUP, channel.group)
+        if (includeHistory) {
+            editor.putString(KEY_HISTORY, history.joinToString("\n"))
+        }
+        editor.apply()
+    }
+
+    private fun migrateFavoriteUrls(oldChannels: List<Channel>, newChannels: List<Channel>) {
+        if (favorites.isEmpty() || oldChannels.isEmpty()) return
+        var changed = false
+        val updated = favorites.toMutableSet()
+        oldChannels.filter { it.streamUrl in favorites }.forEach { old ->
+            val replacement = findEquivalentChannel(old, newChannels) ?: return@forEach
+            if (replacement.streamUrl != old.streamUrl) {
+                updated.remove(old.streamUrl)
+                updated.add(replacement.streamUrl)
+                changed = true
+            }
+        }
+        if (changed) {
+            favorites.clear()
+            favorites.addAll(updated)
+            prefs.edit().putStringSet(KEY_FAVORITES, favorites).apply()
+        }
     }
 
     private fun restoreState() {
@@ -1619,6 +1764,10 @@ class MainActivity : AppCompatActivity() {
             ?.filter { it.isNotBlank() }
             ?.forEach(history::addLast)
         pendingLastChannelUrl = prefs.getString(KEY_LAST_CHANNEL, null)
+        pendingLastChannelId = prefs.getString(KEY_LAST_CHANNEL_ID, null)
+        pendingLastChannelEpgId = prefs.getString(KEY_LAST_CHANNEL_EPG_ID, null)
+        pendingLastChannelName = prefs.getString(KEY_LAST_CHANNEL_NAME, null)
+        pendingLastChannelGroup = prefs.getString(KEY_LAST_CHANNEL_GROUP, null)
 
         dataSaverMaxBitrateBps = prefs.getInt(KEY_DATA_SAVER, 0)
         updateDataSaverLabel()
@@ -1778,7 +1927,9 @@ class MainActivity : AppCompatActivity() {
      *  desain EwsLocationManager), lalu jadwalin worker EWS periodik supaya
      *  notifikasi bahaya terdekat beneran jalan di background. */
     private fun startEwsLocationTracking() {
-        CoroutineScope(Dispatchers.IO).launch {
+        // Keep the one-shot foreground location refresh tied to the Activity
+        // lifecycle. The periodic EWS worker remains process-independent.
+        lifecycleScope.launch(Dispatchers.IO) {
             EwsLocationManager.refreshAndSave(applicationContext)
         }
         EwsUpdateWorker.schedule(applicationContext)
@@ -1839,6 +1990,19 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
 
+        if (!playlistReceiverRegistered) {
+            ContextCompat.registerReceiver(
+                this,
+                playlistSyncReceiver,
+                IntentFilter(PlaylistUpdateWorker.ACTION_PLAYLIST_UPDATED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            playlistReceiverRegistered = true
+        }
+
+        // Apply any background FCM update that arrived while Activity was not visible.
+        if (startupComplete) loadCachedPlaylistAfterRemoteSync()
+
         if (config.autoUpdateEnabled) {
             mainHandler.removeCallbacks(foregroundCheckRunnable)
             mainHandler.postDelayed(
@@ -1890,6 +2054,11 @@ class MainActivity : AppCompatActivity() {
         player?.pause()
         viewerPresence.setWatching(null, false)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        if (playlistReceiverRegistered) {
+            runCatching { unregisterReceiver(playlistSyncReceiver) }
+            playlistReceiverRegistered = false
+        }
 
         super.onStop()
     }
@@ -1960,6 +2129,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
+        if (playlistReceiverRegistered) {
+            runCatching { unregisterReceiver(playlistSyncReceiver) }
+            playlistReceiverRegistered = false
+        }
         backgroundExecutor.shutdownNow()
         val old = player
         player = null
@@ -1983,6 +2156,10 @@ class MainActivity : AppCompatActivity() {
         private const val NOTIFICATION_PERMISSION_REQUEST = 4001
         private const val LOCATION_PERMISSION_REQUEST = 4002
         private const val KEY_LAST_CHANNEL = "last_channel"
+        private const val KEY_LAST_CHANNEL_ID = "last_channel_id"
+        private const val KEY_LAST_CHANNEL_EPG_ID = "last_channel_epg_id"
+        private const val KEY_LAST_CHANNEL_NAME = "last_channel_name"
+        private const val KEY_LAST_CHANNEL_GROUP = "last_channel_group"
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_WAS_FULLSCREEN = "was_fullscreen"

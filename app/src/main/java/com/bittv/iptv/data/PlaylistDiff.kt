@@ -13,11 +13,11 @@ data class PlaylistDiff(
 
 object PlaylistDiffCalculator {
     fun compare(oldItems: List<Channel>, newItems: List<Channel>): PlaylistDiff {
-        val oldMap = oldItems.associateBy { stableKey(it) }
-        val newMap = newItems.associateBy { stableKey(it) }
+        val oldMap = indexed(oldItems)
+        val newMap = indexed(newItems)
 
         var added = 0
-        var removed = 0
+        val removed: Int
         var changed = 0
         var unchanged = 0
 
@@ -56,7 +56,7 @@ object PlaylistDiffCalculator {
      * yang beneran tersimpan, bukan cuma harapan objek yang sama masih hidup.
      */
     fun buildIndex(items: List<Channel>): Map<String, String> =
-        items.associate { stableKey(it) to contentHash(it) }
+        indexed(items).mapValues { (_, channel) -> contentHash(channel) }
 
     fun compareIndex(
         oldIndex: Map<String, String>,
@@ -86,13 +86,34 @@ object PlaylistDiffCalculator {
         ) to newIndex
     }
 
-    private fun stableKey(channel: Channel): String {
-        val url = channel.streamUrl.trim().lowercase()
-        return if (url.isNotBlank()) {
-            "url:$url"
-        } else {
-            "id:${channel.id.trim().lowercase()}\u0000name:${channel.name.trim().lowercase()}"
+    private fun indexed(items: List<Channel>): Map<String, Channel> {
+        val occurrences = HashMap<String, Int>()
+        val result = LinkedHashMap<String, Channel>(items.size)
+        for (channel in items) {
+            val base = stableKey(channel)
+            val ordinal = occurrences[base] ?: 0
+            occurrences[base] = ordinal + 1
+            result["$base#$ordinal"] = channel
         }
+        return result
+    }
+
+    private fun stableKey(channel: Channel): String {
+        val name = channel.name.trim().lowercase()
+        val group = channel.group.trim().lowercase()
+        val logo = channel.logoUrl?.trim()?.lowercase().orEmpty()
+        val epgId = channel.epgId?.trim()?.lowercase().orEmpty()
+        if (epgId.isNotBlank()) return "epg:$epgId|name:$name|group:$group|logo:$logo"
+
+        val id = channel.id.trim().lowercase()
+        if (id.isNotBlank() && !id.startsWith("channel-")) {
+            return "id:$id|name:$name|group:$group|logo:$logo"
+        }
+
+        // Generated parser ids are position-based and therefore unstable when
+        // a playlist is reordered. Name+group+logo is the safest remaining
+        // identity for channels without an explicit EPG/tvg identifier.
+        return "name:$name|group:$group|logo:$logo"
     }
 
     private fun equivalent(a: Channel, b: Channel): Boolean =

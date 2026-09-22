@@ -95,7 +95,7 @@ class EpgUpdateWorker(
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "${WORK_NAME}_initial_now",
-                ExistingWorkPolicy.REPLACE,
+                ExistingWorkPolicy.KEEP,
                 initial
             )
         }
