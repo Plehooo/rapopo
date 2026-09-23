@@ -137,6 +137,7 @@ object FreeNotification {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
             prefs.edit().putString(KEY_FINGERPRINT, payload.fingerprint).commit()
             true
+            }
         }
     }
 
