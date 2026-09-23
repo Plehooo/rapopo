@@ -29,11 +29,23 @@ jobs:
           cache: gradle
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # Android no longer serves the deprecated `tools` SDK package.
+          # The action provides the command-line tools itself; keep package
+          # installation here explicit and install only what this project uses.
+          packages: ''
 
       - name: Install Android build tools
         run: |
-          sdkmanager "platform-tools"                      "platforms;android-35"                      "build-tools;35.0.0"                      "cmake;3.22.1"                      "ndk;26.3.11579264"
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "cmake;3.22.1" \
+            "ndk;26.3.11579264"
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
