@@ -132,7 +132,23 @@ jobs:
           import { createHash } from 'node:crypto';
           import { existsSync, readFileSync } from 'node:fs';
 
-          const credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+          // Accept a normal service-account JSON or a JSON-wrapped secret.
+          // IMPORTANT: this must still contain client_email + private_key.
+          let credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+          if (typeof credentials === 'string') credentials = JSON.parse(credentials);
+          credentials =
+            credentials?.service_account ??
+            credentials?.serviceAccount ??
+            credentials?.credentials ??
+            credentials;
+
+          if (!credentials?.client_email || !credentials?.private_key) {
+            throw new Error(
+              'FIREBASE_SERVICE_ACCOUNT_JSON is not a Google service-account key. ' +
+              'It must contain client_email and private_key. Do not use app/google-services.json.'
+            );
+          }
+
           const projectId = process.env.FIREBASE_PROJECT_ID || credentials.project_id;
           if (!projectId) throw new Error('Firebase project ID is missing');
 
