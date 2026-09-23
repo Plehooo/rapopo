@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/dp_86"
+    android:layout_marginBottom="@dimen/dp_8"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/bg_button_outline"
+    android:padding="@dimen/dp_10"
+    android:clickable="true"
+    android:focusable="true">
+
+    <ImageView
+        android:id="@+id/youtubeThumbnail"
+        android:layout_width="@dimen/dp_120"
+        android:layout_height="@dimen/dp_68"
+        android:layout_marginEnd="@dimen/dp_10"
+        android:background="@drawable/bg_input"
+        android:scaleType="centerCrop"
+        android:contentDescription="Thumbnail YouTube" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/youtubeTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:textSize="@dimen/sp_13" />
+
+        <TextView
+            android:id="@+id/youtubeSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/dp_4"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/text_secondary"
+            android:textSize="@dimen/sp_11" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/dp_6"
+        android:text="›"
+        android:textColor="@color/game_accent_light"
+        android:textStyle="bold"
+        android:textSize="@dimen/sp_22" />
+
+</LinearLayout>
