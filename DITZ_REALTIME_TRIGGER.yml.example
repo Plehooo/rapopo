@@ -1,0 +1,30 @@
+# Copy this file into:
+# Plehooo/ditz/.github/workflows/notify-bittv.yml
+#
+# GitHub secret required in Plehooo/ditz:
+# RAPOPO_DISPATCH_TOKEN
+#
+# The token must be allowed to create repository_dispatch events on:
+# Plehooo/rapopo
+
+name: Trigger BITTV realtime
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "adit.m3u"
+      - "notif.json"
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake BITTV devices
+        env:
+          GH_TOKEN: ${{ secrets.RAPOPO_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/Plehooo/rapopo/dispatches \
+            -f event_type=remote-live-update \
+            -f 'client_payload[kind]=sync'

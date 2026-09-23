@@ -54,7 +54,7 @@ class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : Coroutine
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 PERIODIC_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
+                ExistingPeriodicWorkPolicy.KEEP,
                 periodic
             )
             enqueueNow(context, constraints)

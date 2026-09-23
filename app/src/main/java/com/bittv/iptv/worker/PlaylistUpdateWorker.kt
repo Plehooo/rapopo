@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.util.PlaylistNotification
+import com.bittv.iptv.util.FreeNotification
 import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
 import kotlinx.coroutines.Dispatchers
@@ -35,8 +36,9 @@ class PlaylistUpdateWorker(
                 ConfigStore.load(
                     applicationContext
                 )
+            val realtime = inputData.getBoolean(KEY_REALTIME, false)
 
-            if (!config.autoUpdateEnabled) {
+            if (!config.autoUpdateEnabled && !realtime) {
                 return@withContext Result.success()
             }
 
@@ -53,6 +55,8 @@ class PlaylistUpdateWorker(
 
                 is PlaylistUpdateResult.Updated -> {
 
+                    PlaylistRepository.publishLatestSnapshot(result.snapshot)
+
                     if (
                         config.notificationsEnabled &&
                         !result.firstRemoteSync
@@ -66,9 +70,22 @@ class PlaylistUpdateWorker(
                         )
                     }
 
-                    applicationContext.sendBroadcast(
-                        Intent(ACTION_PLAYLIST_UPDATED).setPackage(applicationContext.packageName)
-                    )
+                    if (realtime && config.notificationsEnabled) {
+                        // The announcement feed is independent of M3U; check it
+                        // in the same queued job so one FCM event cannot race two
+                        // independent network jobs.
+                        FreeNotification.checkAndShow(applicationContext)
+                    }
+
+                    if (realtime) {
+                        applicationContext.sendBroadcast(
+                            Intent(ACTION_REMOTE_PLAYLIST_UPDATED).apply {
+                                setPackage(applicationContext.packageName)
+                                putExtra("revision", result.snapshot.revision)
+                                putExtra("channels", result.totalChannels)
+                            }
+                        )
+                    }
 
                     Result.success(
                         workDataOf(
@@ -82,6 +99,10 @@ class PlaylistUpdateWorker(
                 }
 
                 is PlaylistUpdateResult.NotModified -> {
+
+                    if (realtime && config.notificationsEnabled) {
+                        FreeNotification.checkAndShow(applicationContext)
+                    }
 
                     Result.success(
                         workDataOf(
@@ -112,36 +133,35 @@ class PlaylistUpdateWorker(
 
     companion object {
 
+        const val ACTION_REMOTE_PLAYLIST_UPDATED = "com.bittv.iptv.REMOTE_PLAYLIST_UPDATED"
+        private const val REALTIME_NAME = "live_tv_remote_realtime_sync"
+        private const val KEY_REALTIME = "realtime"
+
+        fun enqueueRealtime(context: Context, kind: String = "sync") {
+            if (kind.isBlank()) return
+            val request = OneTimeWorkRequestBuilder<PlaylistUpdateWorker>()
+                .setInputData(workDataOf(KEY_REALTIME to true, "kind" to kind))
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                REALTIME_NAME,
+                ExistingWorkPolicy.KEEP,
+                request
+            )
+        }
+
         private const val PERIODIC_NAME =
             "live_tv_playlist_periodic"
 
         private const val INITIAL_NAME =
             "live_tv_playlist_initial"
 
-        private const val NOW_NAME =
-            "live_tv_playlist_now"
-
-        const val ACTION_PLAYLIST_UPDATED =
-            "com.bittv.iptv.action.PLAYLIST_UPDATED"
-
         private const val MAX_RETRY_COUNT =
             3
-
-        fun enqueueNow(context: Context, reason: String = "manual") {
-            if (!ConfigStore.load(context).autoUpdateEnabled) return
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val request = OneTimeWorkRequestBuilder<PlaylistUpdateWorker>()
-                .setInputData(workDataOf("reason" to reason))
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                NOW_NAME,
-                ExistingWorkPolicy.KEEP,
-                request
-            )
-        }
 
         fun schedule(
             context: Context

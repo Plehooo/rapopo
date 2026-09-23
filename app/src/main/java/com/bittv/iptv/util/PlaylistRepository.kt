@@ -41,134 +41,111 @@ class PlaylistRepository(
         )
 
     /**
-     * Remote-first playlist loading.
+     * Remote-only playlist loading.
      *
-     * The remote URL remains the source of truth. The latest validated M3U is
-     * additionally kept in app-private cache so background syncs can update
-     * an already-open UI without a second network round-trip.
+     * The M3U content is never written to disk. It is fetched from the
+     * configured URL and kept only in memory for parsing/playback.
      */
     fun ensureLocal(): PlaylistSnapshot? {
-        val fresh = fetchRemote().getOrNull() ?: return PlaylistCacheStore.read(appContext)?.let {
-            PlaylistSnapshot(
-                content = it,
-                fingerprint = NativePlaylist.safeFingerprint(it),
-                etag = null,
-                lastModified = null,
-                revision = statePrefs.getLong(KEY_REVISION, 0L),
-                fromCache = true,
-                notModified = false
-            )
+        return when (val result = checkForUpdate()) {
+            is PlaylistUpdateResult.Updated -> result.snapshot
+            is PlaylistUpdateResult.NotModified -> result.snapshot
+            is PlaylistUpdateResult.Failed -> null
         }
-
-        // First successful launch establishes a silent baseline. After that,
-        // update detection belongs to checkForUpdate()/FCM so opening the app
-        // does not turn an old remote notification into a fake new event.
-        bootstrapIfNeeded(fresh)
-        PlaylistCacheStore.write(appContext, fresh.content, fresh.fingerprint)
-        return fresh
-    }
-
-    private fun bootstrapIfNeeded(snapshot: PlaylistSnapshot) {
-        if (statePrefs.getString(KEY_FINGERPRINT, null) != null) return
-        val parsed = runCatching { M3uParser.parse(snapshot.content, config.playlistUrl) }.getOrDefault(emptyList())
-        if (parsed.size < config.minimumChannels) return
-        val index = PlaylistDiffCalculator.buildIndex(parsed)
-        statePrefs.edit()
-            .putString(KEY_FINGERPRINT, snapshot.fingerprint)
-            .putLong(KEY_REVISION, 1L)
-            .putString(KEY_ETAG, snapshot.etag)
-            .putString(KEY_LAST_MODIFIED, snapshot.lastModified)
-            .putString(KEY_CHANNEL_INDEX, JSONObject(index).toString())
-            .apply()
     }
 
     /**
      * Checks the configured remote playlist directly.
-     * A small fingerprint/index detects changes across worker instances and
-     * the latest validated M3U is cached privately for instant foreground apply.
+     * No PlaylistStore/cache file is used. A small fingerprint/revision is
+     * kept only to detect changes across background worker runs; the M3U
+     * itself is never persisted.
      */
     fun checkForUpdate(): PlaylistUpdateResult {
-        val previousFingerprint =
-            statePrefs.getString(KEY_FINGERPRINT, null)
+        synchronized(REMOTE_LOCK) {
+            val previousFingerprint =
+                statePrefs.getString(KEY_FINGERPRINT, null)
 
-        return try {
-            val fetched = fetchRemote().getOrThrow()
-            val fingerprint = fetched.fingerprint
+            return try {
+                val fetched = fetchRemote().getOrThrow()
+                val fingerprint = fetched.fingerprint
 
-            val changed = previousFingerprint == null ||
-                previousFingerprint != fingerprint
+                val changed = previousFingerprint == null ||
+                    previousFingerprint != fingerprint
 
-            if (!changed) {
-                PlaylistCacheStore.write(appContext, fetched.content, fetched.fingerprint)
-                return PlaylistUpdateResult.NotModified(
-                    fetched.copy(
+                if (!changed) {
+                    // Migrate the lightweight channel index when upgrading
+                    // from older builds whose index used the stream URL as
+                    // its identity. This is silent and happens only once.
+                    if (statePrefs.getInt(KEY_INDEX_SCHEMA, 0) != CHANNEL_INDEX_SCHEMA) {
+                        val currentChannels = runCatching {
+                            M3uParser.parse(fetched.content, config.playlistUrl)
+                        }.getOrDefault(emptyList())
+                        if (currentChannels.size >= config.minimumChannels) {
+                            saveChannelIndex(
+                                PlaylistDiffCalculator.buildIndex(currentChannels)
+                            )
+                        }
+                    }
+
+                    val current = fetched.copy(
                         revision = statePrefs.getLong(KEY_REVISION, 0L),
                         notModified = true
                     )
+                    return PlaylistUpdateResult.NotModified(current)
+                }
+
+                val newChannels = runCatching {
+                    M3uParser.parse(
+                        fetched.content,
+                        config.playlistUrl
+                    )
+                }.getOrDefault(emptyList())
+
+                if (newChannels.size < config.minimumChannels) {
+                    throw IllegalStateException(
+                        "Remote playlist has too few valid channels"
+                    )
+                }
+
+                val oldIndex = loadChannelIndex()
+                val (diff, newIndex) = PlaylistDiffCalculator.compareIndex(
+                    oldIndex,
+                    newChannels
                 )
+
+                val oldRevision =
+                    statePrefs.getLong(KEY_REVISION, 0L)
+                val newRevision = oldRevision + 1L
+
+                val snapshot = fetched.copy(
+                    revision = newRevision,
+                    fromCache = false,
+                    notModified = false
+                )
+                latestSnapshot = snapshot
+
+                statePrefs.edit()
+                    .putString(KEY_FINGERPRINT, fingerprint)
+                    .putString(KEY_ETAG, snapshot.etag)
+                    .putString(KEY_LAST_MODIFIED, snapshot.lastModified)
+                    .putLong(KEY_REVISION, newRevision)
+                    .apply()
+                saveChannelIndex(newIndex)
+
+                PlaylistUpdateResult.Updated(
+                    snapshot = snapshot,
+                    diff = diff,
+                    firstRemoteSync = previousFingerprint == null,
+                    totalChannels = newChannels.size
+                )
+            } catch (t: Throwable) {
+                PlaylistUpdateResult.Failed(t)
             }
-
-            val newChannels = runCatching {
-                M3uParser.parse(
-                    fetched.content,
-                    config.playlistUrl
-                )
-            }.getOrDefault(emptyList())
-
-            if (newChannels.size < config.minimumChannels) {
-                throw IllegalStateException(
-                    "Remote playlist has too few valid channels"
-                )
-            }
-
-            // BUG FIX: dulu diff dihitung dari `memorySnapshot`, field in-memory
-            // biasa yang selalu null tiap kali PlaylistRepository dibuat ulang
-            // (persis yang terjadi setiap PlaylistUpdateWorker/EpgUpdateWorker
-            // jalan, dan juga tiap app di-kill lalu dibuka lagi). Akibatnya diff
-            // selalu jatuh ke cabang generik di bawah -> notifikasi selalu bilang
-            // "ada update" tanpa angka pasti channel yang ditambah/dihapus.
-            //
-            // Sekarang index ringan (stableKey -> hash channel) disimpan di
-            // SharedPreferences, bertahan lintas proses/instance, jadi diff
-            // selalu dihitung dari data run sebelumnya yang beneran ada.
-            val oldIndex = loadChannelIndex()
-            val (diff, newIndex) = PlaylistDiffCalculator.compareIndex(
-                oldIndex,
-                newChannels
-            )
-
-            val oldRevision =
-                statePrefs.getLong(KEY_REVISION, 0L)
-            val newRevision = oldRevision + 1L
-
-            val snapshot = fetched.copy(
-                revision = newRevision,
-                fromCache = false,
-                notModified = false
-            )
-
-            PlaylistCacheStore.write(appContext, snapshot.content, snapshot.fingerprint)
-
-            statePrefs.edit()
-                .putString(KEY_FINGERPRINT, fingerprint)
-                .putString(KEY_ETAG, snapshot.etag)
-                .putString(KEY_LAST_MODIFIED, snapshot.lastModified)
-                .putLong(KEY_REVISION, newRevision)
-                .apply()
-            saveChannelIndex(newIndex)
-
-            PlaylistUpdateResult.Updated(
-                snapshot = snapshot,
-                diff = diff,
-                firstRemoteSync = previousFingerprint == null,
-                totalChannels = newChannels.size
-            )
-        } catch (t: Throwable) {
-            PlaylistUpdateResult.Failed(t)
         }
     }
 
     private fun loadChannelIndex(): Map<String, String> {
+        if (statePrefs.getInt(KEY_INDEX_SCHEMA, 0) != CHANNEL_INDEX_SCHEMA) return emptyMap()
         val raw = statePrefs.getString(KEY_CHANNEL_INDEX, null) ?: return emptyMap()
         return runCatching {
             val obj = JSONObject(raw)
@@ -185,7 +162,10 @@ class PlaylistRepository(
     private fun saveChannelIndex(index: Map<String, String>) {
         val obj = JSONObject()
         index.forEach { (key, hash) -> obj.put(key, hash) }
-        statePrefs.edit().putString(KEY_CHANNEL_INDEX, obj.toString()).apply()
+        statePrefs.edit()
+            .putInt(KEY_INDEX_SCHEMA, CHANNEL_INDEX_SCHEMA)
+            .putString(KEY_CHANNEL_INDEX, obj.toString())
+            .apply()
     }
 
     private fun fetchRemote(): Result<PlaylistSnapshot> {
@@ -304,6 +284,18 @@ class PlaylistRepository(
     }
 
     companion object {
+        private val REMOTE_LOCK = Any()
+        @Volatile private var latestSnapshot: PlaylistSnapshot? = null
+
+        fun publishLatestSnapshot(snapshot: PlaylistSnapshot) {
+            latestSnapshot = snapshot
+        }
+
+        fun consumeLatestSnapshot(): PlaylistSnapshot? =
+            latestSnapshot.also { latestSnapshot = null }
+
+        private const val CHANNEL_INDEX_SCHEMA = 2
+        private const val KEY_INDEX_SCHEMA = "channel_index_schema"
         private const val KEY_FINGERPRINT = "fingerprint"
         private const val KEY_ETAG = "etag"
         private const val KEY_LAST_MODIFIED = "last_modified"

@@ -1,0 +1,176 @@
+name: Publish LIVE TV Remote Update
+
+on:
+  # If remote data files ever live in this repo, a commit sends one sync push.
+  push:
+    branches: [ "main" ]
+    paths:
+      - "adit.m3u"
+      - "notif.json"
+
+  # Instant trigger from the external data repo (currently Plehooo/ditz).
+  repository_dispatch:
+    types: [remote-live-update]
+
+  # Fallback watcher: detects changes in the current remote source even when
+  # the external data repo has not been wired to repository_dispatch yet.
+  schedule:
+    - cron: "*/5 * * * *"
+
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "sync | playlist | notification"
+        required: false
+        default: "sync"
+
+dependencies: {}
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: bittv-remote-fcm-publisher
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Detect remote changes and send data-only FCM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore remote state
+        id: remote_cache
+        uses: actions/cache@v4
+        with:
+          path: .remote-state
+          key: bittv-remote-state-${{ github.run_id }}
+          restore-keys: |
+            bittv-remote-state-
+
+      - name: Detect changed remote data
+        id: detect
+        env:
+          REMOTE_M3U_URL: https://raw.githubusercontent.com/Plehooo/ditz/refs/heads/main/adit.m3u
+          REMOTE_NOTIF_URL: https://raw.githubusercontent.com/Plehooo/ditz/refs/heads/main/notif.json
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_KIND: ${{ github.event.client_payload.kind || github.event.inputs.kind || 'sync' }}
+        run: |
+          set -euo pipefail
+          mkdir -p .remote-state
+
+          fetch_hash() {
+            curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 "$1" \
+              | sha256sum | awk '{print $1}'
+          }
+
+          M3U_HASH="$(fetch_hash "$REMOTE_M3U_URL")"
+          NOTIF_HASH="$(fetch_hash "$REMOTE_NOTIF_URL")"
+
+          OLD_M3U=""
+          OLD_NOTIF=""
+          [ -f .remote-state/m3u.sha256 ] && OLD_M3U="$(cat .remote-state/m3u.sha256)"
+          [ -f .remote-state/notif.sha256 ] && OLD_NOTIF="$(cat .remote-state/notif.sha256)"
+
+          printf '%s' "$M3U_HASH" > .remote-state/m3u.sha256
+          printf '%s' "$NOTIF_HASH" > .remote-state/notif.sha256
+
+          CHANGED=false
+          KIND="sync"
+
+          # repository_dispatch/workflow_dispatch are explicit requests and
+          # must always wake installed devices; the app itself dedupes state.
+          if [ "$EVENT_NAME" = "repository_dispatch" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            CHANGED=true
+            KIND="$DISPATCH_KIND"
+          elif [ -z "$OLD_M3U" ] || [ -z "$OLD_NOTIF" ]; then
+            # First watcher run creates a silent publisher baseline.
+            CHANGED=false
+          elif [ "$M3U_HASH" != "$OLD_M3U" ] && [ "$NOTIF_HASH" != "$OLD_NOTIF" ]; then
+            CHANGED=true
+            KIND="sync"
+          elif [ "$M3U_HASH" != "$OLD_M3U" ]; then
+            CHANGED=true
+            KIND="playlist"
+          elif [ "$NOTIF_HASH" != "$OLD_NOTIF" ]; then
+            CHANGED=true
+            KIND="notification"
+          fi
+
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "kind=$KIND" >> "$GITHUB_OUTPUT"
+
+      - name: Send FCM topic signal
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_PROJECT_ID: idtzhah
+          FCM_KIND: ${{ steps.detect.outputs.kind }}
+          SOURCE_REPO: Plehooo/ditz
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
+            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON secret"
+            exit 1
+          }
+
+          npm install --no-save --no-package-lock google-auth-library@latest
+
+          node --input-type=module <<'NODE'
+          import { GoogleAuth } from 'google-auth-library';
+
+          const credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+          const projectId = process.env.FIREBASE_PROJECT_ID || credentials.project_id;
+          if (!projectId) throw new Error('Firebase project ID is missing');
+
+          const auth = new GoogleAuth({
+            credentials,
+            scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
+          });
+
+          const client = await auth.getClient();
+          const access = await client.getAccessToken();
+          const accessToken = typeof access === 'string' ? access : access?.token;
+          if (!accessToken) throw new Error('Unable to obtain Google access token');
+
+          const body = {
+            message: {
+              topic: 'bittv_live_updates',
+              data: {
+                kind: String(process.env.FCM_KIND || 'sync'),
+                source: String(process.env.SOURCE_REPO || ''),
+                revision: String(process.env.SOURCE_SHA || ''),
+                ts: new Date().toISOString(),
+              },
+              android: {
+                priority: 'HIGH',
+                ttl: '60s',
+                collapseKey: 'bittv-remote-sync',
+              },
+            },
+          };
+
+          const response = await fetch(
+            `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json; charset=UTF-8',
+              },
+              body: JSON.stringify(body),
+            },
+          );
+
+          const text = await response.text();
+          if (!response.ok) {
+            throw new Error(`FCM HTTP ${response.status}: ${text}`);
+          }
+
+          console.log(text);
+          NODE

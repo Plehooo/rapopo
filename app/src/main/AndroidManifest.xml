@@ -54,7 +54,7 @@
              TV yang sengaja dipause pas keluar dari tab TV (video emang gak
              boleh jalan di background, tapi audio-only kayak musik boleh). -->
         <service
-            android:name=".service.RemoteUpdateMessagingService"
+            android:name=".service.RemoteMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />

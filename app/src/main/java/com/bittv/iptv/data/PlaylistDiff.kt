@@ -13,11 +13,11 @@ data class PlaylistDiff(
 
 object PlaylistDiffCalculator {
     fun compare(oldItems: List<Channel>, newItems: List<Channel>): PlaylistDiff {
-        val oldMap = indexed(oldItems)
-        val newMap = indexed(newItems)
+        val oldMap = oldItems.associateBy { stableKey(it) }
+        val newMap = newItems.associateBy { stableKey(it) }
 
         var added = 0
-        val removed: Int
+        var removed = 0
         var changed = 0
         var unchanged = 0
 
@@ -56,7 +56,7 @@ object PlaylistDiffCalculator {
      * yang beneran tersimpan, bukan cuma harapan objek yang sama masih hidup.
      */
     fun buildIndex(items: List<Channel>): Map<String, String> =
-        indexed(items).mapValues { (_, channel) -> contentHash(channel) }
+        items.associate { stableKey(it) to contentHash(it) }
 
     fun compareIndex(
         oldIndex: Map<String, String>,
@@ -86,34 +86,20 @@ object PlaylistDiffCalculator {
         ) to newIndex
     }
 
-    private fun indexed(items: List<Channel>): Map<String, Channel> {
-        val occurrences = HashMap<String, Int>()
-        val result = LinkedHashMap<String, Channel>(items.size)
-        for (channel in items) {
-            val base = stableKey(channel)
-            val ordinal = occurrences[base] ?: 0
-            occurrences[base] = ordinal + 1
-            result["$base#$ordinal"] = channel
-        }
-        return result
-    }
-
     private fun stableKey(channel: Channel): String {
+        val id = channel.id.trim().lowercase()
+        val epg = channel.epgId.orEmpty().trim().lowercase()
         val name = channel.name.trim().lowercase()
         val group = channel.group.trim().lowercase()
-        val logo = channel.logoUrl?.trim()?.lowercase().orEmpty()
-        val epgId = channel.epgId?.trim()?.lowercase().orEmpty()
-        if (epgId.isNotBlank()) return "epg:$epgId|name:$name|group:$group|logo:$logo"
 
-        val id = channel.id.trim().lowercase()
-        if (id.isNotBlank() && !id.startsWith("channel-")) {
-            return "id:$id|name:$name|group:$group|logo:$logo"
+        // Stream URL is deliberately excluded. A provider/CDN can rotate an
+        // expiring M3U8/MPD URL while the logical channel remains the same;
+        // that must be classified as `changed`, not `removed + added`.
+        return when {
+            epg.isNotBlank() -> "epg:$epg"
+            id.isNotBlank() && !id.startsWith("channel-") -> "id:$id"
+            else -> "name:$name\u0000group:$group"
         }
-
-        // Generated parser ids are position-based and therefore unstable when
-        // a playlist is reordered. Name+group+logo is the safest remaining
-        // identity for channels without an explicit EPG/tvg identifier.
-        return "name:$name|group:$group|logo:$logo"
     }
 
     private fun equivalent(a: Channel, b: Channel): Boolean =

@@ -11,7 +11,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.bittv.iptv.R
 import com.bittv.iptv.ui.MainActivity
-import com.bittv.iptv.config.RemoteSyncConfig
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -22,11 +21,10 @@ import java.security.MessageDigest
  * Edit notification.json on GitHub without rebuilding the APK.
  */
 object FreeNotification {
+    private val CHECK_LOCK = Any()
     private const val CHANNEL_ID = "remote_announcements"
     private const val PREFS = "bittv_free_notifications"
     private const val KEY_FINGERPRINT = "last_fingerprint"
-    private const val KEY_INITIALIZED = "initialized"
-    private const val KEY_PUSH_EVENTS = "push_events"
 
     // ID TETAP dengan sengaja (bukan dari hash konten) — supaya notif baru
     // MENGGANTI yang lama di tray, bukan numpuk jadi banyak notif terpisah
@@ -34,7 +32,8 @@ object FreeNotification {
     private const val NOTIFICATION_ID = 7301
 
     // This is intentionally independent from the playlist URL.
-    private const val FEED_URL = RemoteSyncConfig.NOTIFICATION_URL
+    private const val FEED_URL =
+        "https://raw.githubusercontent.com/Plehooo/ditz/refs/heads/main/notif.json"
 
     data class Payload(
         val id: String,
@@ -44,27 +43,9 @@ object FreeNotification {
         val fingerprint: String
     )
 
-    /**
-     * Establishes the current GitHub announcement as a silent baseline. This
-     * is deliberately separate from checkAndShow(): a fresh install must
-     * finish this baseline before joining the shared FCM topic.
-     */
-    @Synchronized
-    fun establishBaseline(context: Context): Result<Boolean> = runCatching {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_INITIALIZED, false) &&
-            !prefs.getString(KEY_FINGERPRINT, null).isNullOrBlank()
-        ) {
-            return@runCatching false
-        }
-
-        val payload = fetch()
-        prefs.edit()
-            .putBoolean(KEY_INITIALIZED, true)
-            .putString(KEY_FINGERPRINT, payload.fingerprint)
-            .apply()
-        true
-    }
+    fun hasBaseline(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_FINGERPRINT, null) != null
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -81,54 +62,50 @@ object FreeNotification {
         }
     }
 
-    @Synchronized
-    fun checkAndShow(
-        context: Context,
-        fromPushEventId: String? = null
-    ): Result<Boolean> {
-        return runCatching {
+    /**
+     * First-install baseline. Reads the current remote announcement silently
+     * and remembers it, so an already-existing announcement is never pushed
+     * as if it were newly published to a brand-new installation.
+     */
+    fun primeBaseline(context: Context): Result<Boolean> {
+        return synchronized(CHECK_LOCK) {
+            runCatching {
+                val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                if (prefs.getString(KEY_FINGERPRINT, null) != null) {
+                    return@runCatching false
+                }
+                val payload = fetch()
+                prefs.edit().putString(KEY_FINGERPRINT, payload.fingerprint).commit()
+                true
+            }
+        }
+    }
+
+    fun checkAndShow(context: Context): Result<Boolean> {
+        return synchronized(CHECK_LOCK) {
+            runCatching {
             val payload = fetch()
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val initialized = prefs.getBoolean(KEY_INITIALIZED, false)
-            val previousFingerprint = prefs.getString(KEY_FINGERPRINT, null)
+            val oldFingerprint = prefs.getString(KEY_FINGERPRINT, null)
 
-            if (!fromPushEventId.isNullOrBlank() && hasPushEvent(prefs, fromPushEventId)) {
-                return@runCatching false
-            }
-
-            // A new installation records the current remote announcement as its
-            // baseline. It never creates a surprise notification for content
-            // that already existed before the device subscribed to FCM.
-            if (!initialized && fromPushEventId.isNullOrBlank()) {
-                prefs.edit()
-                    .putBoolean(KEY_INITIALIZED, true)
-                    .putString(KEY_FINGERPRINT, payload.fingerprint)
-                    .apply()
-                return@runCatching false
-            }
-
-            val changed = previousFingerprint == null || previousFingerprint != payload.fingerprint
-            if (!changed) {
-                // FCM is an invalidation signal; the downloaded content is the
-                // authority. A GitHub commit that changes whitespace, comments,
-                // or another unrelated file must never replay the same alert.
-                if (!fromPushEventId.isNullOrBlank()) {
-                    markState(prefs, payload.fingerprint, fromPushEventId)
-                }
+            // Always advance the local baseline first. This prevents an
+            // announcement that is disabled/blank from being remembered as
+            // "new" and then firing unexpectedly when it is later enabled.
+            if (oldFingerprint == payload.fingerprint) {
                 return@runCatching false
             }
 
             if (!payload.enabled || payload.title.isBlank() || payload.message.isBlank()) {
-                markState(prefs, payload.fingerprint, fromPushEventId)
+                prefs.edit().putString(KEY_FINGERPRINT, payload.fingerprint).commit()
                 return@runCatching false
             }
 
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {
-                // Still advance the content baseline so granting permission
-                // later does not replay an old announcement indefinitely.
-                markState(prefs, payload.fingerprint, fromPushEventId)
+                // Do not consume the event while notification permission is
+                // missing; the user may grant it later and the next sync can
+                // still show the change.
                 return@runCatching false
             }
 
@@ -158,37 +135,10 @@ object FreeNotification {
                 .build()
 
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-            markState(prefs, payload.fingerprint, fromPushEventId)
+            prefs.edit().putString(KEY_FINGERPRINT, payload.fingerprint).commit()
             true
         }
     }
-
-    private fun markState(
-        prefs: android.content.SharedPreferences,
-        fingerprint: String,
-        pushEventId: String?
-    ) {
-        val edit = prefs.edit()
-            .putBoolean(KEY_INITIALIZED, true)
-            .putString(KEY_FINGERPRINT, fingerprint)
-        if (!pushEventId.isNullOrBlank()) {
-            val events = getPushEvents(prefs).toMutableList()
-            if (!events.contains(pushEventId)) events.add(pushEventId)
-            while (events.size > 32) events.removeAt(0)
-            edit.putString(KEY_PUSH_EVENTS, events.joinToString("\n"))
-        }
-        edit.apply()
-    }
-
-    private fun hasPushEvent(prefs: android.content.SharedPreferences, eventId: String): Boolean =
-        getPushEvents(prefs).contains(eventId)
-
-    private fun getPushEvents(prefs: android.content.SharedPreferences): List<String> =
-        prefs.getString(KEY_PUSH_EVENTS, null)
-            ?.lineSequence()
-            ?.filter { it.isNotBlank() }
-            ?.toList()
-            ?: emptyList()
 
     private fun fetch(): Payload {
         var connection: HttpURLConnection? = null
@@ -222,7 +172,7 @@ object FreeNotification {
             val enabled = json.optBoolean("enabled", true)
             val fingerprintSource = buildString {
                 append(id.trim())
-                append("\n")
+                append('\n')
                 append(enabled)
                 append("\n")
                 append(title.trim())

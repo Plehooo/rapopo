@@ -12,6 +12,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.bittv.iptv.util.FreeNotification
+import com.bittv.iptv.util.RemotePushManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -28,6 +29,19 @@ class FreeNotificationWorker(
 
     override suspend fun doWork() =
         withContext(Dispatchers.IO) {
+            if (!FreeNotification.hasBaseline(applicationContext)) {
+                val baseline = FreeNotification.primeBaseline(applicationContext)
+                if (baseline.isSuccess) {
+                    RemotePushManager.markAndSubscribe(applicationContext)
+                    return@withContext Result.success(workDataOf("baselined" to true))
+                }
+                return@withContext if (runAttemptCount < MAX_RETRY_COUNT) {
+                    Result.retry()
+                } else {
+                    Result.failure()
+                }
+            }
+
             val result = FreeNotification.checkAndShow(applicationContext)
             result.fold(
                 onSuccess = { shown -> Result.success(workDataOf("shown" to shown)) },
@@ -41,7 +55,7 @@ class FreeNotificationWorker(
         private const val PERIODIC_NAME = "live_tv_free_notification_periodic"
         private const val INITIAL_NAME = "live_tv_free_notification_initial"
         private const val MAX_RETRY_COUNT = 3
-        private const val CHECK_INTERVAL_MINUTES = 360L
+        private const val CHECK_INTERVAL_MINUTES = 30L
 
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()

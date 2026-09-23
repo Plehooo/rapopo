@@ -12,63 +12,69 @@ import androidx.core.app.NotificationManagerCompat
 import com.bittv.iptv.R
 import com.bittv.iptv.ews.EwsHazard
 import com.bittv.iptv.ui.MainActivity
+import org.json.JSONObject
 import java.util.Locale
 
 object EwsNotification {
+    private val EVENT_LOCK = Any()
     private const val CHANNEL_ID = "bmkg_ews"
     private const val PREFS = "bittv_bmkg_ews"
-    private const val KEY_INITIALIZED = "initialized"
-    private const val KEY_SEEN_EVENTS = "seen_events"
+    private const val KEY_SEEN = "seen_events"
+    private const val KEY_INITIALIZED = "seen_initialized"
     private const val NOTIFICATION_ID = 7401
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "EWS Bencana Terdekat", NotificationManager.IMPORTANCE_HIGH).apply {
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "EWS Bencana Terdekat",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
                     description = "Peringatan bencana terdekat dari sumber resmi BMKG dan Badan Geologi"
                 }
             )
         }
     }
 
-    @Synchronized
     fun showNearbyOnce(context: Context, hazards: List<EwsHazard>) {
+        synchronized(EVENT_LOCK) {
+        if (hazards.isEmpty()) return
+
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val seen = getSeenEvents(prefs).toMutableSet()
-        val initialized = prefs.getBoolean(KEY_INITIALIZED, false)
+        val now = System.currentTimeMillis()
+        val seen = loadSeen(prefs)
+        val active = hazards
+            .filter { it.expiresAtMillis <= 0L || it.expiresAtMillis >= now }
+            .sortedWith(
+                compareByDescending<EwsHazard> { it.severity.weight }
+                    .thenBy { it.distanceKm }
+            )
 
-        // An empty successful scan is still a valid baseline. This prevents
-        // the first real hazard after installation from being swallowed as
-        // "old" simply because the first check happened on a quiet day.
-        if (hazards.isEmpty()) {
-            if (!initialized) prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
+        // Fresh install / first EWS scan: establish a silent baseline.
+        if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
+            active.forEach { seen[eventKey(it)] = now } 
+            prune(seen, active, now)
+            saveSeen(prefs, seen)
+            prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
             return
         }
 
-        val freshHazards = hazards
-            .sortedWith(compareByDescending<EwsHazard> { it.severity.weight }.thenBy { it.distanceKm })
-            .filter { stableEventKey(it) !in seen }
-            .take(MAX_LINES)
-
-        // First successful scan is a baseline only. Existing earthquakes /
-        // weather / volcano reports never generate a surprise notification on
-        // a fresh install (or after permissions are first granted).
-        if (!initialized) {
-            hazards.forEach { seen.add(stableEventKey(it)) }
-            saveSeenEvents(prefs, seen)
-            prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
-            return
-        }
-
-        if (freshHazards.isEmpty()) return
+        val unseen = active.filter { hazard ->
+            val key = eventKey(hazard)
+            val previous = seen[key]
+            previous == null
+        }.take(MAX_LINES)
+        if (unseen.isEmpty()) return
 
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
 
+        val selected = unseen.take(MAX_LINES)
         ensureChannel(context)
-        val body = freshHazards.joinToString("\n") { formatHazard(it) } +
+        val body = selected.joinToString("\n") { formatHazard(it) } +
             "\n\nSumber: BMKG / MAGMA-PVMBG. Periksa kanal resmi untuk arahan keselamatan terbaru."
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -81,7 +87,7 @@ object EwsNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val highest = freshHazards.first()
+        val highest = selected.first()
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_app_logo)
             .setLargeIcon(NotificationBranding.largeIcon(context))
@@ -96,24 +102,58 @@ object EwsNotification {
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-        freshHazards.forEach { seen.add(stableEventKey(it)) }
-        saveSeenEvents(prefs, seen)
-        prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
+
+        selected.forEach { seen[eventKey(it)] = now }
+        prune(seen, active, now)
+        saveSeen(prefs, seen)
+        prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
+    
+        }
     }
 
-    private fun stableEventKey(hazard: EwsHazard): String =
-        hazard.id.trim().lowercase(Locale.US)
+    private fun eventKey(hazard: EwsHazard): String {
+        // A stable event identifier prevents distance jitter, feed ordering,
+        // or repeated worker scans from producing duplicate alerts.
+        return hazard.id.trim()
+    }
 
-    private fun getSeenEvents(prefs: android.content.SharedPreferences): List<String> =
-        prefs.getString(KEY_SEEN_EVENTS, null)
-            ?.lineSequence()
-            ?.filter { it.isNotBlank() }
-            ?.toList()
-            ?: emptyList()
+    private fun loadSeen(prefs: android.content.SharedPreferences): MutableMap<String, Long> {
+        val result = LinkedHashMap<String, Long>()
+        val raw = prefs.getString(KEY_SEEN, null).orEmpty()
+        runCatching {
+            val obj = JSONObject(raw)
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                result[key] = obj.optLong(key, 0L)
+            }
+        }
+        return result
+    }
 
-    private fun saveSeenEvents(prefs: android.content.SharedPreferences, values: Set<String>) {
-        val compact = values.toList().takeLast(256)
-        prefs.edit().putString(KEY_SEEN_EVENTS, compact.joinToString("\n")).apply()
+    private fun saveSeen(prefs: android.content.SharedPreferences, seen: Map<String, Long>) {
+        val obj = JSONObject()
+        seen.entries.toList().takeLast(MAX_HISTORY).forEach { (key, value) -> obj.put(key, value) }
+        prefs.edit().putString(KEY_SEEN, obj.toString()).apply()
+    }
+
+    private fun prune(
+        seen: MutableMap<String, Long>,
+        active: List<EwsHazard>,
+        now: Long
+    ) {
+        val activeKeys = active.map { eventKey(it) }.toSet()
+        val cutoff = now - HISTORY_MILLIS
+        val iterator = seen.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (entry.value < cutoff && entry.key !in activeKeys) {
+                iterator.remove()
+            }
+        }
+        while (seen.size > MAX_HISTORY) {
+            seen.remove(seen.keys.first())
+        }
     }
 
     private fun formatHazard(hazard: EwsHazard): String {
@@ -127,4 +167,6 @@ object EwsNotification {
     }
 
     private const val MAX_LINES = 6
+    private const val MAX_HISTORY = 200
+    private const val HISTORY_MILLIS = 7L * 24L * 60L * 60L * 1000L
 }

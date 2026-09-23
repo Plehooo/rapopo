@@ -14,6 +14,7 @@ import com.bittv.iptv.data.PlaylistDiff
 import com.bittv.iptv.ui.MainActivity
 
 object PlaylistNotification {
+    private val NOTIFY_LOCK = Any()
     private const val CHANNEL_ID = "live_tv_updates"
     private const val PREFS = "bittv_notifications"
     private const val KEY_LAST_REVISION = "last_revision"
@@ -39,13 +40,13 @@ object PlaylistNotification {
         }
     }
 
-    @Synchronized
     fun showUpdatedOnce(
         context: Context,
         revision: Long,
         diff: PlaylistDiff,
         total: Int
     ) {
+        synchronized(NOTIFY_LOCK) {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -92,5 +93,6 @@ object PlaylistNotification {
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         prefs.edit().putLong(KEY_LAST_REVISION, revision).apply()
+        }
     }
 }
