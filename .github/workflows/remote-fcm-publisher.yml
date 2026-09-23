@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: bittv-remote-fcm-publisher
@@ -110,57 +111,39 @@ jobs:
             "$REMOTE_NOTIF_URL" > "$RUNNER_TEMP/notif.json"
           node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/notif.json','utf8')); if (x===null || typeof x!=='object' || !Object.prototype.hasOwnProperty.call(x,'id')) throw new Error('invalid notif.json')"
 
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        if: steps.detect.outputs.changed == 'true'
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: idtzhah
+          workload_identity_provider: "projects/834553102006/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "firebase-adminsdk-fbsvc@idtzhah.iam.gserviceaccount.com"
+          token_format: access_token
+          access_token_scopes: "https://www.googleapis.com/auth/firebase.messaging"
+
       - name: Send FCM topic signal
         if: steps.detect.outputs.changed == 'true'
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           FIREBASE_PROJECT_ID: idtzhah
           FCM_KIND: ${{ steps.detect.outputs.kind }}
           SOURCE_REPO: Plehooo/ditz
           SOURCE_SHA: ${{ github.event.client_payload.revision || github.sha }}
         run: |
           set -euo pipefail
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
-            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON secret"
-            exit 1
-          }
-
-          npm install --no-save --no-package-lock google-auth-library@latest
 
           node --input-type=module <<'NODE'
-          import { GoogleAuth } from 'google-auth-library';
           import { createHash } from 'node:crypto';
           import { existsSync, readFileSync } from 'node:fs';
 
-          // Accept a normal service-account JSON or a JSON-wrapped secret.
-          // IMPORTANT: this must still contain client_email + private_key.
-          let credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-          if (typeof credentials === 'string') credentials = JSON.parse(credentials);
-          credentials =
-            credentials?.service_account ??
-            credentials?.serviceAccount ??
-            credentials?.credentials ??
-            credentials;
-
-          if (!credentials?.client_email || !credentials?.private_key) {
-            throw new Error(
-              'FIREBASE_SERVICE_ACCOUNT_JSON is not a Google service-account key. ' +
-              'It must contain client_email and private_key. Do not use app/google-services.json.'
-            );
+          const accessToken = process.env.ACCESS_TOKEN;
+          if (!accessToken) {
+            throw new Error('Missing access token from the Workload Identity Federation auth step');
           }
 
-          const projectId = process.env.FIREBASE_PROJECT_ID || credentials.project_id;
+          const projectId = process.env.FIREBASE_PROJECT_ID;
           if (!projectId) throw new Error('Firebase project ID is missing');
-
-          const auth = new GoogleAuth({
-            credentials,
-            scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
-          });
-
-          const client = await auth.getClient();
-          const access = await client.getAccessToken();
-          const accessToken = typeof access === 'string' ? access : access?.token;
-          if (!accessToken) throw new Error('Unable to obtain Google access token');
 
           const kind = String(process.env.FCM_KIND || 'sync');
           let notif = null;
