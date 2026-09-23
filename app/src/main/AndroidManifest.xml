@@ -21,6 +21,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BITTV">
 
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_app_logo" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="remote_announcements" />
+
         <receiver
             android:name=".receiver.PlaylistBootReceiver"
             android:enabled="true"

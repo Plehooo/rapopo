@@ -1,19 +1,18 @@
 name: Publish LIVE TV Remote Update
 
 on:
-  # If remote data files ever live in this repo, a commit sends one sync push.
+  # Only used if remote data is ever moved into this repository.
   push:
     branches: [ "main" ]
     paths:
       - "adit.m3u"
       - "notif.json"
 
-  # Instant trigger from the external data repo (currently Plehooo/ditz).
+  # Primary cross-repository trigger from Plehooo/ditz.
   repository_dispatch:
     types: [remote-live-update]
 
-  # Fallback watcher: detects changes in the current remote source even when
-  # the external data repo has not been wired to repository_dispatch yet.
+  # Safety net if the external repository trigger is temporarily unavailable.
   schedule:
     - cron: "*/5 * * * *"
 
@@ -24,11 +23,8 @@ on:
         required: false
         default: "sync"
 
-dependencies: {}
-
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: bittv-remote-fcm-publisher
@@ -82,13 +78,13 @@ jobs:
           CHANGED=false
           KIND="sync"
 
-          # repository_dispatch/workflow_dispatch are explicit requests and
-          # must always wake installed devices; the app itself dedupes state.
           if [ "$EVENT_NAME" = "repository_dispatch" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # The external trigger already classified the change. This lets the
+            # sender choose HIGH only when it has a real visible announcement.
             CHANGED=true
             KIND="$DISPATCH_KIND"
           elif [ -z "$OLD_M3U" ] || [ -z "$OLD_NOTIF" ]; then
-            # First watcher run creates a silent publisher baseline.
+            # First scheduled run establishes a silent publisher baseline.
             CHANGED=false
           elif [ "$M3U_HASH" != "$OLD_M3U" ] && [ "$NOTIF_HASH" != "$OLD_NOTIF" ]; then
             CHANGED=true
@@ -104,6 +100,16 @@ jobs:
           echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "kind=$KIND" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch notification payload when relevant
+        if: steps.detect.outputs.changed == 'true' && steps.detect.outputs.kind != 'playlist'
+        env:
+          REMOTE_NOTIF_URL: https://raw.githubusercontent.com/Plehooo/ditz/refs/heads/main/notif.json
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 30 \
+            "$REMOTE_NOTIF_URL" > "$RUNNER_TEMP/notif.json"
+          node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/notif.json','utf8')); if (x===null || typeof x!=='object' || !Object.prototype.hasOwnProperty.call(x,'id')) throw new Error('invalid notif.json')"
+
       - name: Send FCM topic signal
         if: steps.detect.outputs.changed == 'true'
         env:
@@ -111,7 +117,7 @@ jobs:
           FIREBASE_PROJECT_ID: idtzhah
           FCM_KIND: ${{ steps.detect.outputs.kind }}
           SOURCE_REPO: Plehooo/ditz
-          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.client_payload.revision || github.sha }}
         run: |
           set -euo pipefail
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
@@ -123,6 +129,8 @@ jobs:
 
           node --input-type=module <<'NODE'
           import { GoogleAuth } from 'google-auth-library';
+          import { createHash } from 'node:crypto';
+          import { existsSync, readFileSync } from 'node:fs';
 
           const credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
           const projectId = process.env.FIREBASE_PROJECT_ID || credentials.project_id;
@@ -138,20 +146,66 @@ jobs:
           const accessToken = typeof access === 'string' ? access : access?.token;
           if (!accessToken) throw new Error('Unable to obtain Google access token');
 
+          const kind = String(process.env.FCM_KIND || 'sync');
+          let notif = null;
+          const notifPath = `${process.env.RUNNER_TEMP}/notif.json`;
+          if (existsSync(notifPath) && kind !== 'playlist') {
+            const payload = JSON.parse(readFileSync(notifPath, 'utf8'));
+            const id = String(payload.id ?? '0').trim();
+            const enabled = Boolean(payload.enabled ?? true);
+            const title = String(payload.title ?? '').trim();
+            const message = String(payload.message ?? '').trim();
+            const source = `${id}\n${enabled}\n${title}\n${message}`;
+            const fingerprint = createHash('sha256').update(source, 'utf8').digest('hex');
+            notif = { id, enabled, title, message, fingerprint };
+          }
+
+          const data = {
+            kind,
+            source: String(process.env.SOURCE_REPO || ''),
+            revision: String(process.env.SOURCE_SHA || ''),
+            ts: new Date().toISOString(),
+          };
+
+          if (notif) {
+            data.notif_id = notif.id;
+            data.notif_enabled = String(notif.enabled);
+            data.notif_title = notif.title;
+            data.notif_message = notif.message;
+            data.notif_fingerprint = notif.fingerprint;
+          }
+
+          const hasVisibleAnnouncement = Boolean(
+            notif?.enabled && notif.title && notif.message
+          );
+
+          const android = {
+            priority: hasVisibleAnnouncement ? 'HIGH' : 'NORMAL',
+            ttl: '3600s',
+            collapse_key: hasVisibleAnnouncement
+              ? 'bittv-remote-announcement'
+              : 'bittv-remote-sync',
+          };
+
+          // IMPORTANT: a notification+data message lets Firebase/Android place
+          // the announcement directly into the system tray while the app is
+          // backgrounded/not open. In foreground, onMessageReceived() still
+          // receives the message and keeps the app's branded notification path.
+          if (hasVisibleAnnouncement) {
+            android.notification = {
+              title: notif.title,
+              body: notif.message,
+              channel_id: 'remote_announcements',
+              icon: 'ic_app_logo',
+              tag: 'bittv-remote-announcement',
+            };
+          }
+
           const body = {
             message: {
               topic: 'bittv_live_updates',
-              data: {
-                kind: String(process.env.FCM_KIND || 'sync'),
-                source: String(process.env.SOURCE_REPO || ''),
-                revision: String(process.env.SOURCE_SHA || ''),
-                ts: new Date().toISOString(),
-              },
-              android: {
-                priority: 'HIGH',
-                ttl: '60s',
-                collapseKey: 'bittv-remote-sync',
-              },
+              data,
+              android,
             },
           };
 
@@ -168,9 +222,6 @@ jobs:
           );
 
           const text = await response.text();
-          if (!response.ok) {
-            throw new Error(`FCM HTTP ${response.status}: ${text}`);
-          }
-
+          if (!response.ok) throw new Error(`FCM HTTP ${response.status}: ${text}`);
           console.log(text);
           NODE

@@ -530,9 +530,10 @@ class MainActivity : AppCompatActivity() {
         backgroundExecutor.execute {
             val baseline = FreeNotification.primeBaseline(this@MainActivity)
             if (baseline.isSuccess) {
+                RemotePushManager.markBaselineReady(this@MainActivity)
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
-                    RemotePushManager.markAndSubscribe(this@MainActivity)
+                    RemotePushManager.ensureTopicSubscription(this@MainActivity)
                     FreeNotificationWorker.scheduleCatchUp(this@MainActivity)
                     FreeNotificationWorker.schedule(this@MainActivity)
                 }

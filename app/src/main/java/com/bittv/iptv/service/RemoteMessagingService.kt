@@ -8,11 +8,13 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
 /**
- * FCM data-only receiver.
+ * FCM receiver.
  *
- * No network call is done here. The callback only queues the existing remote
- * sync worker, keeping the callback short and reliable when the app is in the
- * background or not currently open.
+ * Realtime announcements are sent with notification + data payloads. When the
+ * app is foreground, FCM calls this service and we render the branded local
+ * notification. When the app is backgrounded/not open, Firebase/Android can
+ * place the notification directly in the system tray, which is more reliable
+ * than depending on Activity lifecycle callbacks.
  */
 class RemoteMessagingService : FirebaseMessagingService() {
 
@@ -20,34 +22,41 @@ class RemoteMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(remoteMessage)
 
         val data = remoteMessage.data
-        if (data.isEmpty()) return
+        if (data.isEmpty() && remoteMessage.notification == null) return
 
         if (!RemotePushManager.isBaselineReady(applicationContext)) {
+            Log.w(TAG, "FCM received before baseline; ignoring stale/un-enrolled message")
             return
         }
 
-        val kind = data["kind"].orEmpty().ifBlank { "sync" }
+        val kind = data["kind"].orEmpty().ifBlank { "notification" }
         Log.d(TAG, "Remote update received: $kind")
 
-        // A data-only FCM push must render the user-visible announcement here,
-        // without a network call. MainActivity may not exist at all.
-        val notifTitle = data["notif_title"]
-        val notifMessage = data["notif_message"]
+        // In foreground, FCM does not automatically show a notification for a
+        // notification payload, so render it ourselves. Prefer explicit data
+        // fields from our publisher, with the FCM notification fields as a
+        // compatibility fallback for Firebase Console tests.
+        val notificationPayload = remoteMessage.notification
+        val notifTitle = data["notif_title"] ?: notificationPayload?.title
+        val notifMessage = data["notif_message"] ?: notificationPayload?.body
+
         if (!notifTitle.isNullOrBlank() || data.containsKey("notif_fingerprint")) {
+            val enabled = data["notif_enabled"]?.equals("true", ignoreCase = true)
+                ?: (notificationPayload != null)
             RemotePushManager.noteRemoteAnnouncement(applicationContext)
             FreeNotification.showFromPush(
                 context = applicationContext,
                 id = data["notif_id"].orEmpty(),
                 title = notifTitle.orEmpty(),
                 message = notifMessage.orEmpty(),
-                enabled = data["notif_enabled"]?.equals("true", ignoreCase = true) == true,
+                enabled = enabled,
                 suppliedFingerprint = data["notif_fingerprint"]
             )
         }
 
         // Playlist/sync messages use the existing worker pipeline for network
-        // access. The worker publishes the new snapshot and broadcasts it to
-        // a live MainActivity without requiring a manual refresh.
+        // access. The worker publishes the new snapshot and broadcasts it to a
+        // live MainActivity without requiring a manual refresh.
         if (kind != "notification") {
             PlaylistUpdateWorker.enqueueRealtime(applicationContext, kind)
         }
@@ -62,6 +71,7 @@ class RemoteMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
+        Log.d(TAG, "FCM token refreshed")
         RemotePushManager.handleTokenRefresh(applicationContext)
     }
 

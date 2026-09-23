@@ -6,7 +6,7 @@ Struktur aplikasi utama tetap sama. Yang diperkuat adalah jalur notifikasi dan s
 - `RemoteMessagingService` langsung menampilkan notif dari payload FCM; tidak menunggu Activity atau download `notif.json`.
 - WorkManager tetap menjadi fallback/recovery untuk sinkronisasi M3U dan fallback announcement.
 - `adit.m3u` dan `notif.json` tetap berasal dari `Plehooo/ditz`.
-- Fresh install melakukan silent baseline `notif.json` sebelum device subscribe topic.
+- Fresh install melakukan silent baseline `notif.json` sebelum device subscribe topic. Versi ini juga memperbaiki bug lama: fingerprint baseline sudah ada, tetapi flag `baseline_ready` tidak pernah ditulis sehingga subscription FCM selalu diblokir.
 - Startup/resume tidak lagi memanggil `FreeNotification.checkAndShow()`. Jadi membuka APK tidak memicu ulang notif lama.
 - Perubahan URL pada channel yang sama tetap dianggap `changed`, bukan remove/add.
 - Bila APK sedang terbuka, snapshot baru dibroadcast ke `MainActivity` dan channel aktif dapat reconnect ke URL baru tanpa restart/manual refresh.
@@ -27,6 +27,8 @@ Isinya full JSON service account yang boleh mengirim FCM. Jangan commit credenti
 ## 3. Trigger realtime dari `Plehooo/ditz`
 
 **Ini wajib untuk realtime lintas-repo.** Repository `ditz` harus benar-benar memiliki file workflow di `.github/workflows/notify-bittv.yml`; file contoh yang berada di repo `rapopo` tidak dieksekusi oleh `ditz`.
+
+**Penting:** pada saat project ini dibedah, repo publik `Plehooo/ditz` hanya menampilkan `adit.m3u`, `notif.json`, `play.html`, `update.json`, dll. dan belum menampilkan folder `.github/workflows`, jadi trigger lintas-repo memang belum aktif dari repo sumber. Jalur schedule 5-menit di `rapopo` hanya fallback, bukan realtime. Salin file `DITZ_REALTIME_TRIGGER_READY.yml` menjadi `.github/workflows/notify-bittv.yml` di repo `ditz`.
 
 Copy `DITZ_REALTIME_TRIGGER.yml.example` ke:
 
