@@ -99,6 +99,8 @@ object FreeNotification {
         enabled: Boolean,
         suppliedFingerprint: String? = null
     ): Boolean {
+        // FCM is data-only, so foreground/background delivery reaches this
+        // method and shares the same fingerprint gate as the fallback worker.
         return synchronized(CHECK_LOCK) {
             runCatching {
                 val appContext = context.applicationContext
@@ -135,9 +137,15 @@ object FreeNotification {
                     return@runCatching false
                 }
 
+                // Persist the fingerprint BEFORE posting. This makes the
+                // notification path at-most-once across FCM retries/process
+                // recreation: a repeated message can no longer race ahead of
+                // the persisted dedupe state and post the same announcement.
+                if (!prefs.edit().putString(KEY_FINGERPRINT, fingerprint).commit()) {
+                    return@runCatching false
+                }
                 postNotification(appContext, cleanTitle, cleanMessage)
                 clearPending(prefs)
-                prefs.edit().putString(KEY_FINGERPRINT, fingerprint).commit()
                 true
             }.getOrDefault(false)
         }
@@ -210,8 +218,13 @@ object FreeNotification {
                 return@runCatching false
             }
 
+            // Advance the dedupe state before posting so a polling retry,
+            // FCM retry, or Activity reopen cannot race with notification
+            // delivery and post the same announcement twice.
+            if (!prefs.edit().putString(KEY_FINGERPRINT, payload.fingerprint).commit()) {
+                return@runCatching false
+            }
             postNotification(context, payload.title, payload.message)
-            prefs.edit().putString(KEY_FINGERPRINT, payload.fingerprint).commit()
             true
             }
         }

@@ -186,20 +186,14 @@ jobs:
               : 'bittv-remote-sync',
           };
 
-          // IMPORTANT: a notification+data message lets Firebase/Android place
-          // the announcement directly into the system tray while the app is
-          // backgrounded/not open. In foreground, onMessageReceived() still
-          // receives the message and keeps the app's branded notification path.
-          if (hasVisibleAnnouncement) {
-            android.notification = {
-              title: notif.title,
-              body: notif.message,
-              channel_id: 'remote_announcements',
-              icon: 'ic_app_logo',
-              tag: 'bittv-remote-announcement',
-            };
-          }
-
+          // DATA-ONLY ON PURPOSE:
+          // Android's automatic tray handling for notification+data messages
+          // bypasses FirebaseMessagingService when the app is backgrounded.
+          // That made the fallback WorkManager path unable to know that the
+          // same announcement was already shown, so it could post the same
+          // announcement again later. A high-priority data-only message keeps
+          // ONE notification-rendering path in RemoteMessagingService, where
+          // the fingerprint is persisted and deduplicated before posting.
           const body = {
             message: {
               topic: 'bittv_live_updates',

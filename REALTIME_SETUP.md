@@ -2,7 +2,7 @@
 
 Struktur aplikasi utama tetap sama. Yang diperkuat adalah jalur notifikasi dan sinkronisasi remote yang sudah ada:
 
-- FCM **data-only + HIGH priority** menjadi jalur realtime untuk pengumuman yang harus tampil saat APK tidak dibuka.
+- FCM **data-only + HIGH priority** menjadi satu-satunya jalur realtime untuk pengumuman, termasuk saat APK tidak dibuka. `RemoteMessagingService` yang menampilkan notif agar fingerprint dedupe tetap konsisten dan tidak bentrok dengan tray notification otomatis Android.
 - `RemoteMessagingService` langsung menampilkan notif dari payload FCM; tidak menunggu Activity atau download `notif.json`.
 - WorkManager tetap menjadi fallback/recovery untuk sinkronisasi M3U dan fallback announcement.
 - `adit.m3u` dan `notif.json` tetap berasal dari `Plehooo/ditz`.

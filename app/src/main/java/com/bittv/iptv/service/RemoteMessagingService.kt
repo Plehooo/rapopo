@@ -10,11 +10,10 @@ import com.google.firebase.messaging.RemoteMessage
 /**
  * FCM receiver.
  *
- * Realtime announcements are sent with notification + data payloads. When the
- * app is foreground, FCM calls this service and we render the branded local
- * notification. When the app is backgrounded/not open, Firebase/Android can
- * place the notification directly in the system tray, which is more reliable
- * than depending on Activity lifecycle callbacks.
+ * Realtime announcements use data-only FCM so every announcement goes through
+ * this service in both foreground and background states. The local
+ * FreeNotification path owns rendering and fingerprint dedupe, while
+ * WorkManager remains only a recovery/fallback path.
  */
 class RemoteMessagingService : FirebaseMessagingService() {
 

@@ -17,7 +17,7 @@ The patch fixes this in two ways:
 ## Other reliability fixes
 
 - FCM topic subscription no longer waits for `POST_NOTIFICATIONS` permission. FCM enrollment can happen while the Android 13+ permission dialog is pending; actual notification posting remains permission-gated.
-- The publisher now sends `notification + data` for visible announcements. Android/FCM can place these notifications directly in the system tray while the app is backgrounded, while foreground messages still pass through `RemoteMessagingService` for the existing branded local notification.
+- The publisher sends **data-only FCM** for visible announcements. High-priority data messages are handled by `RemoteMessagingService` in both foreground/background states, so the app has one notification-rendering path with persistent fingerprint dedupe. This avoids the background case where Android posts an automatic tray notification and the fallback worker later posts the same announcement again.
 - The manifest declares the default FCM notification channel and icon.
 - `RemoteMessagingService` accepts explicit data fields and falls back to `remoteMessage.notification` so Firebase Console tests work too.
 - FCM enrollment failures are logged for diagnosis; token refresh continues to re-subscribe the device.

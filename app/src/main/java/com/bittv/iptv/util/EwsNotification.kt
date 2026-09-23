@@ -55,6 +55,7 @@ object EwsNotification {
         val seen = loadSeen(prefs)
         val active = hazards
             .filter { it.expiresAtMillis <= 0L || it.expiresAtMillis >= now }
+            .distinctBy(::eventKey)
             .sortedWith(
                 compareByDescending<EwsHazard> { it.severity.weight }
                     .thenBy { it.distanceKm }
@@ -64,15 +65,13 @@ object EwsNotification {
         if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
             active.forEach { seen[eventKey(it)] = now } 
             prune(seen, active, now)
-            saveSeen(prefs, seen)
+            saveSeen(prefs, seen, commit = true)
             prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
             return
         }
 
         val unseen = active.filter { hazard ->
-            val key = eventKey(hazard)
-            val previous = seen[key]
-            previous == null
+            seen[eventKey(hazard)] == null
         }.take(MAX_LINES)
         if (unseen.isEmpty()) return
 
@@ -110,12 +109,17 @@ object EwsNotification {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .build()
 
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-
+        // Commit the event state BEFORE posting the notification. This closes
+        // the race where a background worker posts a notification and Android
+        // kills/recreates the app process before SharedPreferences.apply()
+        // has flushed the seen-event state to disk. On the next app launch the
+        // same hazard is therefore already known and cannot notify again.
         selected.forEach { seen[eventKey(it)] = now }
         prune(seen, active, now)
-        saveSeen(prefs, seen)
+        saveSeen(prefs, seen, commit = true)
         prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
+
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
     
         }
     }
@@ -140,10 +144,15 @@ object EwsNotification {
         return result
     }
 
-    private fun saveSeen(prefs: android.content.SharedPreferences, seen: Map<String, Long>) {
+    private fun saveSeen(
+        prefs: android.content.SharedPreferences,
+        seen: Map<String, Long>,
+        commit: Boolean = false
+    ) {
         val obj = JSONObject()
         seen.entries.toList().takeLast(MAX_HISTORY).forEach { (key, value) -> obj.put(key, value) }
-        prefs.edit().putString(KEY_SEEN, obj.toString()).apply()
+        val editor = prefs.edit().putString(KEY_SEEN, obj.toString())
+        if (commit) editor.commit() else editor.apply()
     }
 
     private fun prune(

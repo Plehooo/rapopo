@@ -50,6 +50,9 @@ class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : Coroutine
         private const val PERIODIC_NAME = "live_tv_bmkg_ews_periodic"
         private const val NOW_NAME = "live_tv_bmkg_ews_now"
         private const val MAX_RETRY_COUNT = 3
+        private const val ENQUEUE_PREFS = "bittv_bmkg_ews"
+        private const val KEY_LAST_NOW_ENQUEUE = "last_now_enqueue"
+        private const val NOW_ENQUEUE_COOLDOWN_MS = 60_000L
 
         fun schedule(context: Context, enqueueImmediate: Boolean = true) {
             val config = ConfigStore.load(context)
@@ -83,6 +86,16 @@ class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : Coroutine
         }
 
         private fun enqueueNow(context: Context, constraints: Constraints) {
+            val prefs = context.getSharedPreferences(ENQUEUE_PREFS, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            val lastEnqueue = prefs.getLong(KEY_LAST_NOW_ENQUEUE, 0L)
+            if (now - lastEnqueue in 0 until NOW_ENQUEUE_COOLDOWN_MS) return
+
+            // Persist the enqueue gate synchronously so fast Activity reopen /
+            // duplicate lifecycle callbacks cannot queue another immediate EWS
+            // scan in the same minute. The periodic worker remains untouched.
+            if (!prefs.edit().putLong(KEY_LAST_NOW_ENQUEUE, now).commit()) return
+
             val request = OneTimeWorkRequestBuilder<EwsUpdateWorker>()
                 .setConstraints(constraints)
                 .setInitialDelay(1L, TimeUnit.SECONDS)

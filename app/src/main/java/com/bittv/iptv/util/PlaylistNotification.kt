@@ -91,8 +91,10 @@ object PlaylistNotification {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
+        // Commit first so a fast worker retry/process recreation cannot post
+        // the same revision twice before the dedupe state reaches disk.
+        if (!prefs.edit().putLong(KEY_LAST_REVISION, revision).commit()) return
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-        prefs.edit().putLong(KEY_LAST_REVISION, revision).apply()
         }
     }
 }
