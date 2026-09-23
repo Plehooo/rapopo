@@ -38,7 +38,7 @@ class FreeNotificationWorker(
             if (!RemotePushManager.isBaselineReady(applicationContext)) {
                 val baseline = FreeNotification.primeBaseline(applicationContext)
                 if (baseline.isSuccess) {
-                    RemotePushManager.ensureTopicSubscription(applicationContext)
+                    RemotePushManager.markAndSubscribe(applicationContext)
                     return@withContext Result.success(workDataOf("baselined" to true))
                 }
                 return@withContext if (runAttemptCount < MAX_RETRY_COUNT) Result.retry() else Result.failure()
