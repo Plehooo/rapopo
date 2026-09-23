@@ -1,117 +1,78 @@
 # BITTV realtime remote update
 
-Arsitektur aplikasi tetap sama. Perubahan hanya memperkuat jalur yang sudah ada:
+Struktur aplikasi utama tetap sama. Yang diperkuat adalah jalur notifikasi dan sinkronisasi remote yang sudah ada:
 
-- FCM data-only menjadi trigger realtime.
-- WorkManager tetap menjadi fallback/recovery.
-- `adit.m3u` tetap dibaca dari sumber remote yang sudah dipakai aplikasi.
-- `notif.json` tetap dibaca dari sumber remote yang sudah dipakai aplikasi.
-- First install melakukan silent baseline sebelum device subscribe topic.
-- Playlist diff memakai identitas channel, bukan URL stream, sehingga rotasi URL GTV/MPD/M3U8 menjadi `changed` dan player bisa reconnect tanpa restart APK.
-- EWS menyimpan event ID yang sudah pernah dinotifikasi dan melakukan silent baseline pada scan pertama.
+- FCM **data-only + HIGH priority** menjadi jalur realtime untuk pengumuman yang harus tampil saat APK tidak dibuka.
+- `RemoteMessagingService` langsung menampilkan notif dari payload FCM; tidak menunggu Activity atau download `notif.json`.
+- WorkManager tetap menjadi fallback/recovery untuk sinkronisasi M3U dan fallback announcement.
+- `adit.m3u` dan `notif.json` tetap berasal dari `Plehooo/ditz`.
+- Fresh install melakukan silent baseline `notif.json` sebelum device subscribe topic.
+- Startup/resume tidak lagi memanggil `FreeNotification.checkAndShow()`. Jadi membuka APK tidak memicu ulang notif lama.
+- Perubahan URL pada channel yang sama tetap dianggap `changed`, bukan remove/add.
+- Bila APK sedang terbuka, snapshot baru dibroadcast ke `MainActivity` dan channel aktif dapat reconnect ke URL baru tanpa restart/manual refresh.
+- EWS tetap periodik, memakai ID event stabil dan silent baseline agar satu event hanya diberi satu notif.
 
 ## 1. Firebase
 
-Pastikan Firebase Messaging aktif pada Firebase project yang sama dengan `app/google-services.json`.
+Pastikan Firebase Messaging aktif pada project yang sama dengan `app/google-services.json`. Android 13+ membutuhkan izin `POST_NOTIFICATIONS` dari user. Device juga harus pernah membuka aplikasi minimal sekali agar FCM registration/topic enrollment selesai.
 
-Android 13+ tetap membutuhkan izin `POST_NOTIFICATIONS` dari user sebelum notifikasi dapat ditampilkan.
+## 2. GitHub secret pada `Plehooo/rapopo`
 
-## 2. GitHub secret
-
-Pada repository aplikasi `Plehooo/rapopo` buat Actions secret:
+Buat Actions secret:
 
 `FIREBASE_SERVICE_ACCOUNT_JSON`
 
-Nilainya adalah seluruh JSON service-account Google Cloud/Firebase. Jangan commit file service-account ke repository.
+Isinya full JSON service account yang boleh mengirim FCM. Jangan commit credential ke repository.
 
-Service account harus memiliki permission untuk mengirim Firebase Cloud Messaging, termasuk `cloudmessaging.messages.create`.
+## 3. Trigger realtime dari `Plehooo/ditz`
 
-## 3. Trigger realtime dari repository data
+**Ini wajib untuk realtime lintas-repo.** Repository `ditz` harus benar-benar memiliki file workflow di `.github/workflows/notify-bittv.yml`; file contoh yang berada di repo `rapopo` tidak dieksekusi oleh `ditz`.
 
-Aplikasi saat ini membaca data dari `Plehooo/ditz`. Workflow di repository aplikasi sudah menyediakan tiga jalur:
+Copy `DITZ_REALTIME_TRIGGER.yml.example` ke:
 
-1. `repository_dispatch` untuk realtime.
-2. `push` jika file data dipindahkan ke repository aplikasi.
-3. schedule 5 menit sebagai fallback jika trigger realtime belum dipasang.
+`Plehooo/ditz/.github/workflows/notify-bittv.yml`
 
-Untuk benar-benar realtime ketika `Plehooo/ditz` berubah, buat workflow berikut di repository `Plehooo/ditz`:
+Buat secret `RAPOPO_DISPATCH_TOKEN` di `Plehooo/ditz`. Token harus punya izin untuk membuat `repository_dispatch` pada `Plehooo/rapopo`; GitHub mendokumentasikan fine-grained token dengan permission Contents: write untuk endpoint ini.
 
-```yaml
-name: Trigger BITTV realtime
+Alurnya:
 
-on:
-  push:
-    branches: ["main"]
-    paths:
-      - "adit.m3u"
-      - "notif.json"
+`ditz push -> repository_dispatch -> rapopo workflow -> FCM -> device`
 
-jobs:
-  dispatch:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Wake BITTV devices
-        env:
-          GH_TOKEN: ${{ secrets.RAPOPO_DISPATCH_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh api repos/Plehooo/rapopo/dispatches \
-            -f event_type=remote-live-update \
-            -f 'client_payload[kind]=sync'
+## 4. Notifikasi remote
+
+Edit `Plehooo/ditz/notif.json` langsung dari GitHub web lalu tekan **Commit changes**. Tidak perlu Termux.
+
+Contoh:
+
+```json
+{
+  "id": 4,
+  "enabled": true,
+  "title": "Update Penting",
+  "message": "GTV sudah normal kembali."
+}
 ```
 
-Kemudian tambahkan Actions secret pada repository `Plehooo/ditz`:
+Payload dikirim langsung di FCM. Device membandingkan fingerprint `id + enabled + title + message`. Nilai yang sama tidak diposting ulang.
 
-`RAPOPO_DISPATCH_TOKEN`
+## 5. Update M3U
 
-Token tersebut harus boleh membuat repository dispatch pada `Plehooo/rapopo`.
+Edit `Plehooo/ditz/adit.m3u`, commit dari GitHub web. Device menerima FCM dan menjalankan existing `PlaylistUpdateWorker` secara expedited bila kuota memungkinkan. Snapshot baru kemudian dibroadcast ke `MainActivity`.
 
-## 4. Alur setelah terpasang
+Kalau GTV sedang diputar dan hanya URL stream berubah, identitas channel tetap sama sehingga player dapat reconnect ke URL baru tanpa keluar APK atau menekan refresh.
 
-### Perubahan notif
+## 6. Fresh install
 
-Edit `notif.json`, commit, push.
+Urutan: `install -> open pertama -> silent baseline notif.json -> subscribe FCM` (dan playlist berjalan pada flow yang sudah ada). Isi notif yang sudah ada sebelum baseline tidak dianggap sebagai event baru. Perubahan setelah enrollment baru menghasilkan push.
 
-`ditz` -> `repository_dispatch` -> `rapopo` -> FCM -> device -> fetch `notif.json` -> fingerprint berubah -> satu notif.
+## 7. EWS
 
-### Perubahan M3U
+EWS tetap memakai BMKG/MAGMA source yang sudah ada. Event disimpan berdasarkan ID stabil; scan pertama silent baseline. Worker periodic memakai `KEEP` agar job tidak dibatalkan/restart oleh trigger berulang.
 
-Edit `adit.m3u`, commit, push.
+## 8. Fallback
 
-`ditz` -> `repository_dispatch` -> `rapopo` -> FCM -> device -> fetch M3U -> fingerprint berubah -> cache state/index diperbarui -> broadcast lokal -> MainActivity menerapkan playlist baru.
+Jika FCM delayed/offline, `FreeNotificationWorker` tetap melakukan recovery berkala. Jalur ini bukan jalur utama dan tidak dijadwalkan 10 detik setelah membuka APK.
 
-Jika channel aktif memiliki identitas yang sama tetapi URL/headers/DRM berubah, player melakukan reconnect ke konfigurasi baru tanpa user keluar dari APK.
+## 9. Validasi
 
-## 5. Fresh install
-
-Urutan yang diharapkan:
-
-`install -> fetch playlist -> prime notif baseline -> subscribe FCM`
-
-Data yang sudah ada sebelum install tidak dianggap sebagai event baru.
-
-## 6. EWS
-
-EWS tetap periodik karena FCM tidak menggantikan sumber hazard. Worker EWS menggunakan unique work `KEEP`; event disimpan berdasarkan ID stabil dan scan pertama melakukan baseline silent.
-
-Jadwal Android WorkManager bersifat inexact. FCM adalah jalur realtime; WorkManager menjadi fallback ketika delivery push tertunda atau perangkat sementara offline.
-
-## 7. Termux
-
-Setelah file project ditimpa dengan versi ini:
-
-```bash
-cd ~/rapopo
-git add -A
-git commit -m "release: realtime FCM playlist EWS hardening"
-git push origin main
-```
-
-Build debug:
-
-```bash
-cd ~/rapopo
-./gradlew :app:assembleDebug --no-daemon
-```
-
-Build release tetap memakai signing secrets yang sudah digunakan workflow.
+Build CI memakai `android-actions/setup-android@v4` dan tidak meminta package SDK deprecated `tools`. Local Gradle build tetap perlu diverifikasi oleh GitHub Actions bila environment tidak memiliki distribution Gradle yang dibutuhkan.

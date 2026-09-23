@@ -8,13 +8,13 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.util.PlaylistNotification
-import com.bittv.iptv.util.FreeNotification
 import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +59,7 @@ class PlaylistUpdateWorker(
 
                     if (
                         config.notificationsEnabled &&
+                        !realtime &&
                         !result.firstRemoteSync
                     ) {
 
@@ -68,13 +69,6 @@ class PlaylistUpdateWorker(
                             diff = result.diff,
                             total = result.totalChannels
                         )
-                    }
-
-                    if (realtime && config.notificationsEnabled) {
-                        // The announcement feed is independent of M3U; check it
-                        // in the same queued job so one FCM event cannot race two
-                        // independent network jobs.
-                        FreeNotification.checkAndShow(applicationContext)
                     }
 
                     if (realtime) {
@@ -99,10 +93,6 @@ class PlaylistUpdateWorker(
                 }
 
                 is PlaylistUpdateResult.NotModified -> {
-
-                    if (realtime && config.notificationsEnabled) {
-                        FreeNotification.checkAndShow(applicationContext)
-                    }
 
                     Result.success(
                         workDataOf(
@@ -146,6 +136,7 @@ class PlaylistUpdateWorker(
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 REALTIME_NAME,

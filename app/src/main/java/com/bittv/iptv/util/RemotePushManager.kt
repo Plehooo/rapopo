@@ -1,5 +1,9 @@
 package com.bittv.iptv.util
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.NotificationManagerCompat
+import com.bittv.iptv.config.ConfigStore
 import android.content.Context
 import com.google.firebase.messaging.FirebaseMessaging
 import java.util.concurrent.atomic.AtomicBoolean
@@ -32,7 +36,12 @@ object RemotePushManager {
     fun ensureTopicSubscription(context: Context) {
         val appContext = context.applicationContext
         if (!isBaselineReady(appContext) || enrolling.getAndSet(true)) return
+        if (!notificationsAllowed(appContext)) {
+            enrolling.set(false)
+            return
+        }
 
+        FreeNotification.ensureChannel(appContext)
         FirebaseMessaging.getInstance()
             .subscribeToTopic(TOPIC)
             .addOnCompleteListener {
@@ -46,6 +55,14 @@ object RemotePushManager {
             }
     }
 
+    private fun notificationsAllowed(context: Context): Boolean {
+        if (!ConfigStore.load(context).notificationsEnabled) return false
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return false
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
     fun markAndSubscribe(context: Context) {
         markBaselineReady(context)
         ensureTopicSubscription(context)
@@ -53,5 +70,12 @@ object RemotePushManager {
 
     fun handleTokenRefresh(context: Context) {
         if (isBaselineReady(context)) ensureTopicSubscription(context)
+    }
+
+    fun noteRemoteAnnouncement(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong("last_remote_push_ms", System.currentTimeMillis())
+            .apply()
     }
 }

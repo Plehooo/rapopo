@@ -249,7 +249,7 @@ class MainActivity : AppCompatActivity() {
     private val foregroundCheckRunnable = object : Runnable {
         override fun run() {
             if (!isFinishing && !isDestroyed && config.autoUpdateEnabled) {
-                checkRemoteInBackground()
+                checkRemoteInBackground(showPlaylistNotification = true)
                 mainHandler.postDelayed(
                     this,
                     config.foregroundCheckSeconds.coerceAtLeast(30L) * 1000L
@@ -300,6 +300,7 @@ class MainActivity : AppCompatActivity() {
         registerRemotePlaylistReceiver()
 
         scheduleBackgroundWorkers()
+        initializeRemoteNotifications()
 
         startupOverlay.visibility = View.VISIBLE
         playerContainer.visibility = View.GONE
@@ -521,14 +522,34 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * Notification enrollment is independent from M3U loading. A fresh install
+     * silently baselines the current remote announcement before joining FCM.
+     */
+    private fun initializeRemoteNotifications() {
+        backgroundExecutor.execute {
+            val baseline = FreeNotification.primeBaseline(this@MainActivity)
+            if (baseline.isSuccess) {
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    RemotePushManager.ensureTopicSubscription(this@MainActivity)
+                    FreeNotificationWorker.scheduleCatchUp(this@MainActivity)
+                    FreeNotificationWorker.schedule(this@MainActivity)
+                }
+            } else {
+                FreeNotificationWorker.scheduleBaselineRetry(this@MainActivity)
+            }
+        }
+    }
+
     private fun scheduleBackgroundWorkers() {
         if (!config.autoUpdateEnabled) return
         PlaylistUpdateWorker.schedule(this)
         AppUpdateWorker.schedule(this)
         EpgUpdateWorker.schedule(this)
-        // FreeNotification fallback is started only after the silent baseline
-        // is established in loadLocalPlaylistAsync(), preventing a fresh
-        // installation from immediately receiving the current announcement.
+        // FreeNotification fallback is started only after initializeRemoteNotifications()
+        // establishes the silent baseline, preventing a fresh installation from
+        // immediately receiving the current announcement.
         checkMandatoryUpdateOnLaunch()
     }
 
@@ -607,25 +628,6 @@ class MainActivity : AppCompatActivity() {
 
             if (isFinishing || isDestroyed) return@execute
 
-            val hadNotificationBaseline = FreeNotification.hasBaseline(this@MainActivity)
-            val notificationBaseline = if (hadNotificationBaseline) {
-                Result.success(false)
-            } else {
-                FreeNotification.primeBaseline(this@MainActivity)
-            }
-
-            // Existing installs: catch up a missed announcement silently only
-            // when it was already baselined before. New installs are primed
-            // first, so the current announcement is never emitted as new.
-            if (hadNotificationBaseline && config.notificationsEnabled) {
-                FreeNotification.checkAndShow(this@MainActivity)
-            }
-
-            if (notificationBaseline.isSuccess) {
-                RemotePushManager.markAndSubscribe(this@MainActivity)
-                FreeNotificationWorker.schedule(this@MainActivity)
-            }
-
             mainHandler.post {
                 if (isFinishing || isDestroyed) return@post
 
@@ -642,14 +644,6 @@ class MainActivity : AppCompatActivity() {
                  */
                 applyParsedChannels(snapshot.content, parsed)
 
-                if (startupUpdate != null && config.notificationsEnabled) {
-                    PlaylistNotification.showUpdatedOnce(
-                        this@MainActivity,
-                        startupUpdate.snapshot.revision,
-                        startupUpdate.diff,
-                        startupUpdate.totalChannels
-                    )
-                }
 
                 // The EPG URL becomes known only after M3U parsing.
                 // Re-schedule the one-time EPG worker so fresh installs get
@@ -784,7 +778,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkRemoteInBackground() {
+    private fun checkRemoteInBackground(showPlaylistNotification: Boolean) {
         backgroundExecutor.execute {
             val result = runCatching { playlistRepository.checkForUpdate() }
                 .getOrElse { PlaylistUpdateResult.Failed(it) }
@@ -805,7 +799,7 @@ class MainActivity : AppCompatActivity() {
 
                     applyParsedChannels(result.snapshot.content, parsed)
 
-                    if (config.notificationsEnabled && !result.firstRemoteSync) {
+                    if (showPlaylistNotification && config.notificationsEnabled && !result.firstRemoteSync) {
                         PlaylistNotification.showUpdatedOnce(
                             this,
                             result.snapshot.revision,
@@ -1901,7 +1895,8 @@ class MainActivity : AppCompatActivity() {
             // baselined before joining FCM, then catch up any missed change.
             if (RemotePushManager.isBaselineReady(this)) {
                 RemotePushManager.ensureTopicSubscription(this)
-                FreeNotification.checkAndShow(this)
+                FreeNotification.showPending(this)
+                FreeNotificationWorker.scheduleCatchUp(this)
                 FreeNotificationWorker.schedule(this)
                 EwsUpdateWorker.enqueueNow(this)
             }
@@ -1996,7 +1991,7 @@ class MainActivity : AppCompatActivity() {
             } else if (config.autoUpdateEnabled) {
                 // Immediate foreground catch-up: do not make the user wait
                 // for the first 60-second foreground polling tick.
-                checkRemoteInBackground()
+                checkRemoteInBackground(showPlaylistNotification = false)
             }
         }
 

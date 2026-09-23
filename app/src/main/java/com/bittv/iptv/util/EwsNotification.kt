@@ -71,6 +71,7 @@ object EwsNotification {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
         val selected = unseen.take(MAX_LINES)
         ensureChannel(context)
