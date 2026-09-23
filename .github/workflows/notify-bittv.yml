@@ -1,0 +1,67 @@
+name: Trigger BITTV realtime
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "adit.m3u"
+      - "notif.json"
+
+permissions: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect update
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            FILES="adit.m3u notif.json"
+          else
+            FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
+          fi
+
+          M3U=false
+          NOTIF=false
+
+          grep -qx "adit.m3u" <<< "$FILES" && M3U=true || true
+          grep -qx "notif.json" <<< "$FILES" && NOTIF=true || true
+
+          if $M3U && $NOTIF; then
+            KIND="sync"
+          elif $M3U; then
+            KIND="playlist"
+          else
+            KIND="notification"
+          fi
+
+          echo "kind=$KIND" >> "$GITHUB_OUTPUT"
+          echo "revision=$AFTER" >> "$GITHUB_OUTPUT"
+
+      - name: Send realtime trigger
+        env:
+          GH_TOKEN: ${{ secrets.RAPOPO_DISPATCH_TOKEN }}
+          KIND: ${{ steps.detect.outputs.kind }}
+          REVISION: ${{ steps.detect.outputs.revision }}
+        run: |
+          set -euo pipefail
+
+          gh api --method POST \
+            repos/Plehooo/rapopo/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -f event_type=remote-live-update \
+            -f "client_payload[kind]=$KIND" \
+            -f "client_payload[revision]=$REVISION"
