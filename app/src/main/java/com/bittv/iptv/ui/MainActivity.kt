@@ -532,7 +532,7 @@ class MainActivity : AppCompatActivity() {
             if (baseline.isSuccess) {
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
-                    RemotePushManager.ensureTopicSubscription(this@MainActivity)
+                    RemotePushManager.markAndSubscribe(this@MainActivity)
                     FreeNotificationWorker.scheduleCatchUp(this@MainActivity)
                     FreeNotificationWorker.schedule(this@MainActivity)
                 }
