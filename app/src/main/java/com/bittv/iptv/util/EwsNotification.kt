@@ -40,10 +40,18 @@ object EwsNotification {
 
     fun showNearbyOnce(context: Context, hazards: List<EwsHazard>) {
         synchronized(EVENT_LOCK) {
-        if (hazards.isEmpty()) return
-
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
+
+        // Scan sukses tanpa hazard juga merupakan hasil yang valid. Pada
+        // instalasi baru, tandai baseline kosong agar hazard BARU pada scan
+        // berikutnya langsung dianggap event baru dan bisa dinotif.
+        if (hazards.isEmpty()) {
+            if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
+                prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
+            }
+            return
+        }
         val seen = loadSeen(prefs)
         val active = hazards
             .filter { it.expiresAtMillis <= 0L || it.expiresAtMillis >= now }

@@ -485,7 +485,14 @@ class MainActivity : AppCompatActivity() {
     private fun configureUi() {
         PlaylistNotification.ensureChannel(this)
         requestNotificationPermissionIfNeeded()
-        requestLocationPermissionIfNeeded()
+        // Android 13+ only allows one runtime-permission dialog flow at a time.
+        // Jangan langsung menembakkan dialog lokasi di frame yang sama dengan
+        // dialog notifikasi; tunggu callback notifikasi, lalu lanjut ke lokasi.
+        if (Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            requestLocationPermissionIfNeeded()
+        }
 
         setupList()
         setupControls()
@@ -1871,10 +1878,16 @@ class MainActivity : AppCompatActivity() {
      *  desain EwsLocationManager), lalu jadwalin worker EWS periodik supaya
      *  notifikasi bahaya terdekat beneran jalan di background. */
     private fun startEwsLocationTracking() {
+        // Pasang jadwal periodik sekarang, tapi jangan enqueue scan instan dulu:
+        // refresh lokasi butuh beberapa detik. Scan instan baru dikirim setelah
+        // koordinat terbaru benar-benar berhasil disimpan.
+        EwsUpdateWorker.schedule(applicationContext, enqueueImmediate = false)
         CoroutineScope(Dispatchers.IO).launch {
-            EwsLocationManager.refreshAndSave(applicationContext)
+            val location = EwsLocationManager.refreshAndSave(applicationContext)
+            if (location != null) {
+                EwsUpdateWorker.enqueueNow(applicationContext)
+            }
         }
-        EwsUpdateWorker.schedule(applicationContext)
     }
 
     override fun onRequestPermissionsResult(
@@ -1884,23 +1897,27 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == LOCATION_PERMISSION_REQUEST) {
-            // Tetap jadwalin worker walau user nolak izin; EwsRepository bakal
-            // balik "NoLocation" dengan aman sampai user kasih izin lewat
-            // Setelan HP nanti (gak bikin crash atau notif spam).
-            startEwsLocationTracking()
-        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST &&
-            Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) {
-            // Permission is now granted: ensure the current remote state was
-            // baselined before joining FCM, then catch up any missed change.
-            if (RemotePushManager.isBaselineReady(this)) {
-                RemotePushManager.ensureTopicSubscription(this)
-                FreeNotification.showPending(this)
-                FreeNotificationWorker.scheduleCatchUp(this)
-                FreeNotificationWorker.schedule(this)
-                EwsUpdateWorker.enqueueNow(this)
+            // EWS benar-benar aktif hanya setelah izin lokasi diberikan.
+            // Kalau ditolak, jangan bikin periodic worker kosong yang terus
+            // bangun tiap 15 menit tanpa bisa menentukan lokasi.
+            if (EwsLocationManager.hasPermission(this)) {
+                startEwsLocationTracking()
             }
+        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
+            // Alur EWS terpisah dari FCM. Setelah dialog notifikasi selesai
+            // (baik Allow maupun Don't allow), lanjutkan meminta lokasi agar
+            // dua izin yang memang dibutuhkan EWS tidak saling memblokir.
+            if (Build.VERSION.SDK_INT < 33 ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            ) {
+                if (RemotePushManager.isBaselineReady(this)) {
+                    RemotePushManager.ensureTopicSubscription(this)
+                    FreeNotification.showPending(this)
+                    FreeNotificationWorker.scheduleCatchUp(this)
+                    FreeNotificationWorker.schedule(this)
+                }
+            }
+            requestLocationPermissionIfNeeded()
         }
     }
 
