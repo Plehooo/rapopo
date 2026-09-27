@@ -41,6 +41,7 @@ import android.widget.EditText
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -73,6 +74,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bittv.iptv.R
+import com.bittv.iptv.BuildConfig
 import com.bittv.iptv.config.AppConfig
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.data.Channel
@@ -313,6 +315,7 @@ class MainActivity : AppCompatActivity() {
         restoreState()
         configureBackHandling()
         configureUi()
+        buildExtendedGameHub()
 
         viewerPresence = ViewerPresenceManager(this) { counts ->
             mainHandler.post {
@@ -485,6 +488,8 @@ class MainActivity : AppCompatActivity() {
             }
         })
         
+    }
+
     // ================= Extended Game Hub =================
 
     private fun buildExtendedGameHub() {
@@ -1567,8 +1572,6 @@ class MainActivity : AppCompatActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
     private fun showGameToast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
-buildExtendedGameHub()
-    }
 
     /**
      * targetSdk 35 forces edge-to-edge, so without this the top bar and the
