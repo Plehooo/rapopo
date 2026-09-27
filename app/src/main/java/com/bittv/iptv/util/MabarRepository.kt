@@ -270,7 +270,7 @@ class MabarRepository(context: Context) {
             )
         }.sortedWith(compareBy<RoomPlayer> { !it.ready }.thenBy { it.name.lowercase(Locale.ROOT) })
 
-        val messages = snapshot.child("messages").children.takeLast(30).map { child ->
+        val messages = snapshot.child("messages").children.toList().takeLast(30).map { child ->
             val name = child.child("name").getValue(String::class.java).orEmpty().ifBlank { "Player" }
             val text = child.child("text").getValue(String::class.java).orEmpty()
             "$name: $text"

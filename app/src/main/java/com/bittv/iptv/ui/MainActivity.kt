@@ -593,7 +593,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 12f
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
             maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
+            setEllipsize(android.text.TextUtils.TruncateAt.END)
             setPadding(0, dp(3), 0, 0)
         }
         copy.addView(desc)
@@ -622,7 +622,7 @@ class MainActivity : AppCompatActivity() {
 
         val input = EditText(this).apply {
             hint = "Contoh: Adit"
-            singleLine = true
+            isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             filters = arrayOf(InputFilter.LengthFilter(24))
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
@@ -699,7 +699,7 @@ class MainActivity : AppCompatActivity() {
         val nameInput = EditText(this).apply {
             setText(playerName)
             hint = "Nama pemain"
-            singleLine = true
+            isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             filters = arrayOf(InputFilter.LengthFilter(24))
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
@@ -1038,7 +1038,7 @@ class MainActivity : AppCompatActivity() {
                 state = rpgStore.addRewards(state, xpGain, goldGain)
                 state = rpgStore.markWin(state)
                 if ((0..99).random() < 24) state = rpgStore.save(state.copy(potions = state.potions + 1))
-                logText.text = "$actionName kena $damage. $enemyName tumbang • +$xpGain XP • +$goldGainG${if (state.level > beforeLevel) " • LEVEL UP!" else ""}"
+                logText.text = "$actionName kena $damage. $enemyName tumbang • +$xpGain XP • +$goldGain${if (state.level > beforeLevel) " • LEVEL UP!" else ""}"
                 enemyName = "Tidak ada monster"
                 enemyHp = 0
                 enemyMaxHp = 0
@@ -1231,7 +1231,7 @@ class MainActivity : AppCompatActivity() {
         val roomChooser = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val roomInput = EditText(this).apply {
             hint = "Kode room 6 karakter"
-            singleLine = true
+            isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT
             filters = arrayOf(InputFilter.LengthFilter(6))
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
@@ -1340,7 +1340,7 @@ class MainActivity : AppCompatActivity() {
         val chatRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val chatInput = EditText(this).apply {
             hint = "Chat room..."
-            singleLine = true
+            isSingleLine = true
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
             setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
             background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 14f)
