@@ -16,3 +16,7 @@ For large art/audio files, keep them as separate Storage objects and add only th
 
 ### Production Firebase checklist
 Deploy `functions/`, `database.rules.json`, `firestore.rules`, and `storage.rules`. Register the Android app in Firebase, enable Authentication/Realtime Database/Firestore/Storage, and configure App Check with Play Integrity for release builds. Firebase documents App Check as a way to help ensure only the registered app accesses protected backend resources. See the official Firebase docs cited in the project audit notes.
+
+## GitHub Actions
+
+This repository includes real workflows under `.github/workflows/`: `Build BITTV APK`, `Validate BITTV`, and `BITTV Realtime Update`. A push to `main` automatically starts the build/validation workflows. Cross-repository realtime updates require the `Plehooo/ditz` trigger workflow plus the `RAPOPO_DISPATCH_TOKEN` and `FIREBASE_SERVICE_ACCOUNT_JSON` secrets described in `AUTOMATION_SETUP.md`.
