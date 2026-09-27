@@ -149,115 +149,20 @@ class EwsRepository(private val context: Context) {
         location: EwsLocationStore.SavedLocation,
         out: MutableList<EwsHazard>
     ): Int {
-        val rss = getText(BMKG_NOWCAST_RSS_URL)
-        if (rss != null) {
-            val links = extractUrls(rss)
-                .filter { it.contains("bmkg.go.id") && (it.endsWith(".xml") || it.contains("alert", true)) }
-                .distinct()
-                .take(MAX_WEATHER_DOCS)
-            var successes = 0
-            for (link in links) {
-                val xml = runCatching { getText(link) }.getOrNull() ?: continue
-                val alert = parseCap(xml) ?: continue
-                successes++
-                val event = alert.toHazard(location)
-                if (event != null) out += event
-            }
-            if (successes > 0) return 1
+        val rss = getText(BMKG_NOWCAST_RSS_URL) ?: return 0
+        val links = extractUrls(rss)
+            .filter { it.contains("bmkg.go.id") && (it.endsWith(".xml") || it.contains("alert", true)) }
+            .distinct()
+            .take(MAX_WEATHER_DOCS)
+        var successes = 0
+        for (link in links) {
+            val xml = runCatching { getText(link) }.getOrNull() ?: continue
+            val alert = parseCap(xml) ?: continue
+            successes++
+            val event = alert.toHazard(location)
+            if (event != null) out += event
         }
-
-        // Fallback langsung ke layer Nowcasting publik BMKG. Ini membuat
-        // EWS tetap punya jalur cuaca saat halaman/link CAP berubah struktur.
-        return fetchWeatherNowcastArcGis(location, out)
-    }
-
-    private fun fetchWeatherNowcastArcGis(
-        location: EwsLocationStore.SavedLocation,
-        out: MutableList<EwsHazard>
-    ): Int {
-        val url = BMKG_NOWCAST_ARCGIS_QUERY_URL +
-            "&geometry=${location.longitude}%2C${location.latitude}"
-        val body = getText(url) ?: return 0
-        val features = runCatching { JSONObject(body).optJSONArray("features") }.getOrNull()
-            ?: return 0
-
-        val now = System.currentTimeMillis()
-        for (i in 0 until features.length()) {
-            val attrs = features.optJSONObject(i)?.optJSONObject("attributes") ?: continue
-            val end = readEpochMillis(attrs, "waktuberakhir", "waktu_berakhir", "validto", "valid_until")
-            if (end > 0L && end < now) continue
-
-            val province = firstNonBlank(attrs, "namaprovinsi", "nama_provinsi", "provinsi")
-            val impact = firstNonBlank(attrs, "kategoridampak", "kategori_dampak", "kategori")
-            val start = readEpochMillis(attrs, "waktupembuatan", "waktu_pembuatan", "waktumulai", "validfrom")
-            val detail = buildString {
-                if (province.isNotBlank()) append(province)
-                if (impact.isNotBlank()) {
-                    if (isNotEmpty()) append(" • ")
-                    append(impact)
-                }
-                val areaType = firstNonBlank(attrs, "tipearea", "tipe_area")
-                if (areaType.isNotBlank()) {
-                    if (isNotEmpty()) append(" • ")
-                    append(areaType)
-                }
-            }.ifBlank { "Nowcasting BMKG aktif di sekitar lokasi." }
-
-            val objectId = firstNonBlank(attrs, "OBJECTID", "objectid", "id")
-            val stableId = objectId.ifBlank {
-                listOf(province, impact, start.toString(), end.toString()).joinToString("|")
-            }
-            val severity = mapNowcastSeverity(impact)
-            out += EwsHazard(
-                id = "bmkg-nowcast-$stableId",
-                type = EwsHazard.Type.WEATHER,
-                title = if (impact.isBlank()) "Nowcasting Cuaca BMKG" else "Cuaca • $impact",
-                source = "BMKG Nowcasting",
-                detail = detail,
-                latitude = location.latitude,
-                longitude = location.longitude,
-                distanceKm = 0.0,
-                severity = severity,
-                occurredAtMillis = start,
-                expiresAtMillis = end
-            )
-        }
-        return 1
-    }
-
-    private fun firstNonBlank(obj: JSONObject, vararg keys: String): String =
-        keys.asSequence()
-            .map { key -> obj.optString(key, "").trim() }
-            .firstOrNull { it.isNotBlank() }
-            .orEmpty()
-
-    private fun readEpochMillis(obj: JSONObject, vararg keys: String): Long {
-        for (key in keys) {
-            val raw = obj.opt(key) ?: continue
-            when (raw) {
-                is Number -> {
-                    val value = raw.toLong()
-                    if (value > 0L) return if (value < 10_000_000_000L) value * 1000L else value
-                }
-                else -> {
-                    val text = raw.toString().trim()
-                    text.toLongOrNull()?.let {
-                        return if (it < 10_000_000_000L) it * 1000L else it
-                    }
-                    parseIsoMillis(text).takeIf { it > 0L }?.let { return it }
-                }
-            }
-        }
-        return 0L
-    }
-
-    private fun mapNowcastSeverity(value: String): EwsHazard.Severity {
-        val text = value.lowercase(Locale.US)
-        return when {
-            "tinggi" in text || "berat" in text || "bahaya" in text -> EwsHazard.Severity.WARNING
-            "sedang" in text || "waspada" in text -> EwsHazard.Severity.WATCH
-            else -> EwsHazard.Severity.ADVISORY
-        }
+        return if (successes > 0) 1 else 0
     }
 
     private data class CapAlert(
@@ -516,7 +421,6 @@ class EwsRepository(private val context: Context) {
         const val BMKG_EARTHQUAKE_M5_URL = "https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json"
         const val BMKG_EARTHQUAKE_FELT_URL = "https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.json"
         const val BMKG_NOWCAST_RSS_URL = "https://www.bmkg.go.id/alerts/nowcast/id"
-        const val BMKG_NOWCAST_ARCGIS_QUERY_URL = "https://nowcasting.bmkg.go.id/arcgis/rest/services/production/nowcasting_publik_phase2/MapServer/2/query?f=json&where=1%3D1&outFields=*&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&returnGeometry=false&returnZ=false&returnM=false"
         const val MAGMA_VOLCANO_REPORTS_URL = "https://magma.esdm.go.id/v1/gunung-api/laporan"
 
         const val TSUNAMI_RADIUS_KM = 500.0

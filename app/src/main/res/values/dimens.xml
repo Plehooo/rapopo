@@ -39,7 +39,6 @@
     <dimen name="dp_86">86dp</dimen>
     <dimen name="dp_180">180dp</dimen>
     <dimen name="dp_230">230dp</dimen>
-    <dimen name="dp_280">280dp</dimen>
 
     <!-- sp: ukuran teks (ikut skala font aksesibilitas user + tier layar ini) -->
     <dimen name="sp_9">9sp</dimen>

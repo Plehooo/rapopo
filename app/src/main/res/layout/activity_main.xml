@@ -15,7 +15,7 @@
         android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="@dimen/dp_76"
+        android:minHeight="@dimen/dp_68"
         android:gravity="center_vertical"
         android:paddingStart="@dimen/dp_18"
         android:paddingEnd="@dimen/dp_18"
@@ -92,7 +92,7 @@
             android:id="@+id/startupOverlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="@dimen/dp_280"
+            android:minHeight="@dimen/dp_230"
             android:background="@color/bg_root"
             android:foregroundGravity="center">
 
@@ -260,34 +260,6 @@
             android:contentDescription="Filter channel" />
     </LinearLayout>
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="@dimen/dp_14"
-        android:paddingEnd="@dimen/dp_14"
-        android:paddingTop="@dimen/dp_7"
-        android:paddingBottom="@dimen/dp_7"
-        android:background="@color/bg_root_soft"
-        android:gravity="center_vertical">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="● LIVE  •  EPG  •  EWS  •  CLOUD"
-            android:textColor="@color/brand_blue_light"
-            android:textStyle="bold"
-            android:textSize="@dimen/sp_10"
-            android:letterSpacing="0.03" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="AUTO UPDATE"
-            android:textColor="@color/text_secondary"
-            android:textSize="@dimen/sp_9" />
-    </LinearLayout>
-
     <!-- Filter card: search + group + prev/next. Defaultnya KETUTUP (gone),
          cuma muncul pas tombol "⋯" di atas diklik — biar gak makan tempat
          terus-terusan kayak sebelumnya. -->
@@ -423,7 +395,7 @@
         android:layout_marginStart="@dimen/dp_16"
         android:layout_marginTop="@dimen/dp_14"
         android:layout_marginBottom="@dimen/dp_2"
-        android:text="SEMUA CHANNEL • LIVE DISCOVERY"
+        android:text="SEMUA CHANNEL"
         android:textColor="@color/text_tertiary"
         android:textSize="@dimen/sp_11"
         android:textStyle="bold"
@@ -454,7 +426,9 @@
         android:orientation="vertical"
         android:visibility="gone">
 
-        <!-- Menu Game Hub: game lokal, RPG, social, market virtual, dan mabar. -->
+        <!-- Menu game: daftar game yang bisa dipilih. Ini yang tampil duluan
+             pas masuk tab Game. Sekarang baru "Tebak Gambar" yang aktif,
+             sisanya kartu "Segera hadir" biar kelihatan bakal nambah terus. -->
         <ScrollView
             android:id="@+id/gameMenuContainer"
             android:layout_width="match_parent"
@@ -468,37 +442,15 @@
                 android:orientation="vertical"
                 android:padding="@dimen/dp_16">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="@dimen/dp_14"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="🎮 GAME HUB"
-                        android:textColor="@color/game_accent_light"
-                        android:textStyle="bold"
-                        android:textSize="@dimen/sp_13"
-                        android:letterSpacing="0.06" />
-
-                    <TextView
-                        android:id="@+id/gameHubPointsText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/bg_button_game"
-                        android:paddingStart="@dimen/dp_10"
-                        android:paddingEnd="@dimen/dp_10"
-                        android:paddingTop="@dimen/dp_6"
-                        android:paddingBottom="@dimen/dp_6"
-                        android:text="💎 0 poin"
-                        android:textColor="@color/text_primary"
-                        android:textStyle="bold"
-                        android:textSize="@dimen/sp_11" />
-                </LinearLayout>
+                    android:text="🎮 PILIH GAME"
+                    android:textColor="@color/game_accent_light"
+                    android:textStyle="bold"
+                    android:textSize="@dimen/sp_13"
+                    android:letterSpacing="0.06" />
 
                 <LinearLayout
                     android:id="@+id/gameCardTebakGambar"
@@ -603,12 +555,6 @@
                         android:textStyle="bold"
                         android:textSize="@dimen/sp_22" />
                 </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/gameExtraCardsContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -1173,172 +1119,6 @@
     </LinearLayout>
     <!-- /gameContentContainer -->
 
-    <!-- Settings/Profile panel -->
-    <LinearLayout
-        android:id="@+id/settingsContentContainer"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:visibility="gone"
-        android:padding="@dimen/dp_16">
-
-        <ScrollView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scrollbars="none">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="⚙️ SETTINGS"
-                    android:textColor="@color/brand_blue_light"
-                    android:textStyle="bold"
-                    android:textSize="@dimen/sp_13"
-                    android:letterSpacing="0.06" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_12"
-                    android:orientation="vertical"
-                    android:background="@drawable/bg_button_game"
-                    android:padding="@dimen/dp_18">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="PROFIL"
-                        android:textColor="@color/text_secondary"
-                        android:textStyle="bold"
-                        android:textSize="@dimen/sp_11" />
-
-                    <TextView
-                        android:id="@+id/profileNameText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/dp_3"
-                        android:text="Tamu"
-                        android:textColor="@color/text_primary"
-                        android:textStyle="bold"
-                        android:textSize="@dimen/sp_22" />
-
-                    <TextView
-                        android:id="@+id/settingsPointsText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/dp_4"
-                        android:text="💎 0 poin"
-                        android:textColor="@color/game_accent_light"
-                        android:textStyle="bold"
-                        android:textSize="@dimen/sp_13" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/dp_12"
-                        android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/settingsChangeNameButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:background="@drawable/bg_button_game"
-                            android:textColor="@color/text_primary"
-                            android:text="Ubah Nama"
-                            android:textAllCaps="false" />
-
-                        <Button
-                            android:id="@+id/settingsLogoutButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="@dimen/dp_8"
-                            android:background="@drawable/bg_button_game"
-                            android:textColor="@color/text_primary"
-                            android:text="Log Out"
-                            android:textAllCaps="false" />
-                    </LinearLayout>
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/settingsDailyBonusButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_10"
-                    android:background="@drawable/bg_button_game"
-                    android:textColor="@color/text_primary"
-                    android:text="🎁 Ambil Bonus Harian +10 Poin"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/settingsPointShopButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_8"
-                    android:background="@drawable/bg_button_game"
-                    android:textColor="@color/text_primary"
-                    android:text="🛍️ Buka Point Shop"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/settingsSocialButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_8"
-                    android:background="@drawable/bg_button_game"
-                    android:textColor="@color/text_primary"
-                    android:text="👥 Community • Teman • Transfer"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/settingsMarketButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_8"
-                    android:background="@drawable/bg_button_game"
-                    android:textColor="@color/text_primary"
-                    android:text="📈 Pasar Virtual"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/settingsMabarButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_8"
-                    android:background="@drawable/bg_button_game"
-                    android:textColor="@color/text_primary"
-                    android:text="🎮 Mabar Realtime"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/settingsEwsScanButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_8"
-                    android:background="@drawable/bg_button_game"
-                    android:textColor="@color/text_primary"
-                    android:text="🚨 Scan EWS Sekarang"
-                    android:textAllCaps="false" />
-
-                <TextView
-                    android:id="@+id/settingsStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_10"
-                    android:text="Pengaturan aplikasi • poin bersifat virtual dan hanya berlaku di aplikasi."
-                    android:textColor="@color/text_secondary"
-                    android:textSize="@dimen/sp_12" />
-            </LinearLayout>
-        </ScrollView>
-    </LinearLayout>
-
     <!-- Bottom nav: TV (halaman ini) vs Game (Tebak Kata) — gaya minimal ala
          WhatsApp: ikon di atas, label kecil di bawah, tab aktif dikasih warna
          aksen, bukan tombol kotak warna-warni. Disembunyikan total pas
@@ -1411,35 +1191,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/dp_3"
                 android:text="Game"
-                android:textColor="@color/text_secondary"
-                android:textSize="@dimen/sp_11" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/bottomNavSettings"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:paddingTop="@dimen/dp_10"
-            android:paddingBottom="@dimen/dp_10"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚙️"
-                android:textSize="@dimen/sp_20" />
-
-            <TextView
-                android:id="@+id/bottomNavSettingsLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/dp_3"
-                android:text="Settings"
                 android:textColor="@color/text_secondary"
                 android:textSize="@dimen/sp_11" />
         </LinearLayout>
