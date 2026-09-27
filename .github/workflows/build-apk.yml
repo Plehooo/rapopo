@@ -1,0 +1,161 @@
+name: Build LIVE TV Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    name: Build LIVE TV APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          # Android no longer serves the deprecated `tools` SDK package.
+          # The action provides the command-line tools itself; keep package
+          # installation here explicit and install only what this project uses.
+          packages: ''
+
+      - name: Install Android build tools
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "cmake;3.22.1" \
+            "ndk;26.3.11579264"
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: |
+          ./gradlew :app:assembleDebug             --no-daemon             --stacktrace             --console=plain             --max-workers=2
+
+      - name: Verify debug APK
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LIVE-TV-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      # Build APK RELEASE yang ditandatangani (signed) beneran, pakai keystore
+      # yang disimpan sebagai GitHub Secret (RELEASE_KEYSTORE_BASE64) — bukan
+      # di-commit ke repo. Kalau secret belum di-set di repo Settings > Secrets
+      # and variables > Actions, langkah-langkah di bawah otomatis di-skip
+      # (gak bikin build gagal), jadi aman buat repo yang belum setup release
+      # signing sama sekali.
+      #
+      # CATATAN: `secrets.xxx` gak boleh dipakai langsung di `if:` (GitHub
+      # Actions menolak workflow-nya, "Unrecognized named-value: secrets").
+      # Makanya ceknya dilakuin di step ini dulu lewat `env:`, hasilnya
+      # dititipkan ke $GITHUB_OUTPUT, baru step-step berikutnya pakai
+      # `if: steps.check_release_secret.outputs.has_secret == 'true'`.
+      - name: Check release keystore secret
+        id: check_release_secret
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "has_secret=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secret=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decode release keystore
+        if: steps.check_release_secret.outputs.has_secret == 'true'
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "${{ runner.temp }}/release.keystore"
+
+      - name: Build signed release APK
+        if: steps.check_release_secret.outputs.has_secret == 'true'
+        env:
+          RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleRelease             --no-daemon             --stacktrace             --console=plain             --max-workers=2
+
+      - name: Remove decoded keystore from runner
+        if: always()
+        run: rm -f "${{ runner.temp }}/release.keystore"
+
+      - name: Verify release APK
+        if: steps.check_release_secret.outputs.has_secret == 'true'
+        run: |
+          test -s app/build/outputs/apk/release/app-release.apk
+          ls -lh app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload signed release APK
+        if: steps.check_release_secret.outputs.has_secret == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LIVE-TV-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # BUG FIX: sebelumnya tiap push bikin artifact APK baru (nama beda2
+      # per run_number) dengan retention 30 hari, tapi TIDAK PERNAH ada yang
+      # menghapus artifact lama. Jadi tiap kali push, storage Actions di
+      # GitHub numpuk terus (makin lama makin banyak APK ~11MB nyangkut),
+      # sampai akhirnya kena limit kuota storage repo. Step ini otomatis
+      # hapus artifact lama, cuma nyisain 3 build terbaru, tiap kali ada
+      # build baru sukses — jadi storage tetap stabil, gak numpuk terus.
+      - name: Cleanup old APK artifacts
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const keep = 3;
+            const prefixes = ["LIVE-TV-debug-", "LIVE-TV-release-"];
+            const { data } = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            for (const prefix of prefixes) {
+              const artifacts = data.artifacts
+                .filter(a => a.name.startsWith(prefix))
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+              const toDelete = artifacts.slice(keep);
+              for (const artifact of toDelete) {
+                console.log(`Deleting old artifact: ${artifact.name} (id ${artifact.id})`);
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+              }
+            }

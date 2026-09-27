@@ -1,0 +1,72 @@
+# Copy this file into:
+# Plehooo/ditz/.github/workflows/notify-bittv.yml
+#
+# Required secret in Plehooo/ditz:
+# RAPOPO_DISPATCH_TOKEN
+# The token must be a fine-grained token with Contents: write on Plehooo/rapopo.
+
+name: Trigger BITTV realtime
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "adit.m3u"
+      - "notif.json"
+
+permissions: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout changed files
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Classify remote update
+        id: classify
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            FILES="adit.m3u notif.json"
+          else
+            FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
+          fi
+
+          HAS_M3U=false
+          HAS_NOTIF=false
+          grep -qx "adit.m3u" <<< "$FILES" && HAS_M3U=true || true
+          grep -qx "notif.json" <<< "$FILES" && HAS_NOTIF=true || true
+
+          if $HAS_M3U && $HAS_NOTIF; then
+            KIND=sync
+          elif $HAS_M3U; then
+            KIND=playlist
+          elif $HAS_NOTIF; then
+            KIND=notification
+          else
+            KIND=sync
+          fi
+
+          echo "kind=$KIND" >> "$GITHUB_OUTPUT"
+          echo "revision=$AFTER" >> "$GITHUB_OUTPUT"
+
+      - name: Wake BITTV devices
+        env:
+          GH_TOKEN: ${{ secrets.RAPOPO_DISPATCH_TOKEN }}
+          KIND: ${{ steps.classify.outputs.kind }}
+          REVISION: ${{ steps.classify.outputs.revision }}
+        run: |
+          set -euo pipefail
+          gh api --method POST repos/Plehooo/rapopo/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -f event_type=remote-live-update \
+            -f "client_payload[kind]=$KIND" \
+            -f "client_payload[revision]=$REVISION"
