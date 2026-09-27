@@ -1,6 +1,6 @@
 package com.bittv.iptv.game
 
-import android.app.AlertDialog
+import androidx.appcompat.app.AlertDialog
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity

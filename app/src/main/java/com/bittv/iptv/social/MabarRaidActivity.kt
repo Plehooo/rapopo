@@ -1,6 +1,6 @@
 package com.bittv.iptv.social
 
-import android.app.AlertDialog
+import androidx.appcompat.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -58,6 +58,7 @@ class MabarRaidActivity : AppCompatActivity() {
         val share=Button(this).apply{text="Bagikan Room";isAllCaps=false;setOnClickListener{share()}};c.addView(share)
         status.text="Siap. Buat room atau Quick Match."
         create.setOnClickListener{createRoom()};join.setOnClickListener{join(input.text.toString())};quick.setOnClickListener{quickMatch()};startButton.setOnClickListener{GameCloudManager.startRaid(this,roomCode){r->runOnUiThread{status.text=r.fold({"Raid dimulai."},{"Start gagal: ${it.message}"})}}}
+        UiPolish.polish(root)
     }
     private fun createRoom(){GameCloudManager.createRaidRoom(this){r->runOnUiThread{r.onSuccess{roomCode=it.roomCode;status.text="Room $roomCode dibuat. Bagikan kodenya.";attachRoom()}.onFailure{status.text="Gagal: ${it.message}"}}}}
     private fun join(raw:String){val code=raw.trim().uppercase(Locale.US);if(code.length!=8){status.text="Kode room harus 8 karakter.";return};GameCloudManager.joinRaidRoom(this,code){r->runOnUiThread{r.onSuccess{roomCode=it.roomCode;status.text="Berhasil masuk room.";attachRoom()}.onFailure{status.text="Gagal: ${it.message}"}}}}
