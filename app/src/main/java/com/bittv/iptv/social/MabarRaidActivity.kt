@@ -45,7 +45,7 @@ class MabarRaidActivity : AppCompatActivity() {
         c.addView(TextView(this).apply{text="🤝 MABAR SQUAD RAID";textSize=25f;setTextColor(getColor(R.color.text_primary));setTypeface(typeface,1)})
         c.addView(TextView(this).apply{text="2–4 pemain • room realtime • quick match • action divalidasi Firebase";textSize=12f;setTextColor(getColor(R.color.text_secondary));setPadding(0,4,0,14)})
         status=TextView(this).apply{text="Login...";textSize=13f;setTextColor(getColor(R.color.game_accent_light))};c.addView(status)
-        val input=EditText(this).apply{hint="Kode room";singleLine=true;isAllCaps=true};c.addView(input)
+        val input=EditText(this).apply{hint="Kode room";isSingleLine = true;isAllCaps=true};c.addView(input)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
         val create=Button(this).apply{text="Buat";isAllCaps=false};val join=Button(this).apply{text="Gabung";isAllCaps=false};val quick=Button(this).apply{text="Quick Match";isAllCaps=false}
         row.addView(create,LinearLayout.LayoutParams(0,-2,1f));row.addView(join,LinearLayout.LayoutParams(0,-2,1f));row.addView(quick,LinearLayout.LayoutParams(0,-2,1f));c.addView(row)

@@ -83,7 +83,7 @@ class SocialHubActivity : AppCompatActivity() {
         codeText.tag = "codeText"
 
         addSection("🔎 CARI TEMAN")
-        val input = EditText(this).apply { hint = "Masukkan kode invite (8 karakter)"; singleLine = true; setTextColor(getColor(R.color.text_primary)) }
+        val input = EditText(this).apply { hint = "Masukkan kode invite (8 karakter)"; isSingleLine = true; setTextColor(getColor(R.color.text_primary)) }
         content.addView(input)
         val findButton = Button(this).apply { text = "Cari"; isAllCaps = false }
         content.addView(findButton)
@@ -102,8 +102,8 @@ class SocialHubActivity : AppCompatActivity() {
         }
 
         addSection("💸 TRANSFER VIRTUAL COIN")
-        val transferCode = EditText(this).apply { hint = "Kode invite penerima"; singleLine = true }
-        val transferAmount = EditText(this).apply { hint = "Jumlah coin"; inputType = android.text.InputType.TYPE_CLASS_NUMBER; singleLine = true }
+        val transferCode = EditText(this).apply { hint = "Kode invite penerima"; isSingleLine = true }
+        val transferAmount = EditText(this).apply { hint = "Jumlah coin"; inputType = android.text.InputType.TYPE_CLASS_NUMBER; isSingleLine = true }
         val transferButton = Button(this).apply { text = "Transfer"; isAllCaps = false }
         content.addView(transferCode)
         content.addView(transferAmount)

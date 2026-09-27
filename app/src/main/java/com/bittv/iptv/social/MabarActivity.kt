@@ -49,7 +49,7 @@ class MabarActivity : AppCompatActivity() {
         root.addView(status)
         playersInfo = TextView(this).apply { textSize = 13f; setTextColor(getColor(R.color.text_primary)); setPadding(12, 10, 12, 10); setBackgroundResource(R.drawable.bg_button_game) }
         root.addView(playersInfo, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
-        val codeInput = EditText(this).apply { hint = "Kode room 6 karakter"; singleLine = true }
+        val codeInput = EditText(this).apply { hint = "Kode room 6 karakter"; isSingleLine = true }
         root.addView(codeInput)
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val create = Button(this).apply { text = "Buat Room"; isAllCaps = false }

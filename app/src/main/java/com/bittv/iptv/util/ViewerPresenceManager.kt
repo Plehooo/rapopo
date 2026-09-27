@@ -165,7 +165,7 @@ class ViewerPresenceManager(
         }
         root.get().addOnSuccessListener { snapshot ->
             val removals = snapshot.children.mapNotNull { channel ->
-                channel.child(uid).ref.takeIf { it.exists() }
+                channel.child(uid).takeIf { it.exists() }?.ref
             }
             if (removals.isEmpty()) {
                 after()

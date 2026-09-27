@@ -39,14 +39,14 @@ object GameProfileManager {
             crystals = p.getInt("crystals", 25).coerceAtLeast(0),
             selectedCharacter = p.getString("character", "sera") ?: "sera",
             unlockedCharacters = p.getStringSet("unlocked", setOf("sera", "kael", "luma"))?.toSet() ?: setOf("sera", "kael", "luma"),
-            inventory = decodeInventory(p.getString("inventory", "")),
+            inventory = decodeInventory(p.getString("inventory", "") ?: ""),
             completedQuests = p.getStringSet("quests", emptySet())?.toSet() ?: emptySet(),
             streak = p.getInt("streak", 0).coerceAtLeast(0),
             bestScore = p.getInt("best_score", 0).coerceAtLeast(0)
         )
     }
 
-    fun setDisplayName(context: Context, name: String) { prefs(context).edit().putString("display_name", AppProfileManager.cleanName(name).ifBlank { "Pemain" }).apply() }
+    fun setDisplayName(context: Context, name: String) { prefs(context).edit().putString("display_name", name.trim().take(24).ifBlank { "Pemain" }).apply() }
     fun setCharacter(context: Context, id: String) { prefs(context).edit().putString("character", id).apply() }
 
     fun addXp(context: Context, amount: Int): Profile {

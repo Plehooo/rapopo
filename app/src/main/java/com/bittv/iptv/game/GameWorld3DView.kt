@@ -96,11 +96,11 @@ class GameWorld3DView @JvmOverloads constructor(
 
         // Orbiting energy core.
         val cx = w * 0.5f
-        val cy = h * 0.35f + sin(tick * 0.035) * dp(6f)
-        val pulse = 1f + 0.09f * sin(tick * 0.08)
+        val cy = h * 0.35f + (sin(tick * 0.035) * dp(6f)).toFloat()
+        val pulse = 1f + (0.09f * sin(tick * 0.08)).toFloat()
         p.color = 0x2038BDF8
         canvas.drawCircle(cx, cy, dp(34f) * pulse, p)
-        p.color = 0x8838BDF8
+        p.color = 0x8838BDF8.toInt()
         canvas.drawCircle(cx, cy, dp(18f) * pulse, p)
         p.color = 0xFFECF7FF.toInt()
         canvas.drawCircle(cx, cy, dp(6f) * pulse, p)
@@ -108,7 +108,7 @@ class GameWorld3DView @JvmOverloads constructor(
         // Floating hero + boss, rotated in 3D-like perspective.
         val heroX = w * 0.27f
         val bossX = w * 0.73f
-        val floatY = sin(tick * 0.045) * dp(7f)
+        val floatY = (sin(tick * 0.045) * dp(7f)).toFloat()
         drawCharacter(canvas, heroX, h * 0.61f + floatY, dp(34f), heroPath, true, tick * 0.02f)
         drawCharacter(canvas, bossX, h * 0.61f - floatY, dp(44f), bossPath, false, -tick * 0.015f)
 
@@ -143,7 +143,7 @@ class GameWorld3DView @JvmOverloads constructor(
         path.close()
         p.color = if (hero) 0xFF4FD8FF.toInt() else 0xFFFF5F78.toInt()
         canvas.drawPath(path, p)
-        p.color = 0xFF10151D
+        p.color = 0xFF10151D.toInt()
         canvas.drawCircle(0f, -size * 0.15f, size * 0.34f, p)
         p.color = 0xFFF7FBFF.toInt()
         canvas.drawCircle(-size * 0.12f, -size * 0.2f, size * 0.055f, p)

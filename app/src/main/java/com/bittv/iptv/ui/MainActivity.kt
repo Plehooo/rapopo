@@ -81,6 +81,7 @@ import com.bittv.iptv.util.AppUpdateChecker
 import com.bittv.iptv.util.ClearKeyUtil
 import com.bittv.iptv.util.EpgParser
 import com.bittv.iptv.util.EpgRepository
+import com.bittv.iptv.util.EwsNotification
 import com.bittv.iptv.util.HeaderParser
 import com.bittv.iptv.util.LogoLoader
 import com.bittv.iptv.util.MusicRepository
@@ -1575,7 +1576,7 @@ class MainActivity : AppCompatActivity() {
             val input = EditText(this).apply {
                 inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
                 hint = "Jawaban"
-                singleLine = true
+                isSingleLine = true
             }
             val box = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
@@ -1622,10 +1623,10 @@ class MainActivity : AppCompatActivity() {
                 refreshGameHubPoints()
                 return
             }
-            val (answer, hint) = bank[index]
+            val (answer, clue) = bank[index]
             val input = EditText(this).apply {
                 hint = "Jawabanmu"
-                singleLine = true
+                isSingleLine = true
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             }
             val box = android.widget.LinearLayout(this).apply {
@@ -1635,7 +1636,7 @@ class MainActivity : AppCompatActivity() {
             }
             val dialog = AlertDialog.Builder(this)
                 .setTitle("🔤 Tebak Kata ${index + 1}/5")
-                .setMessage("Petunjuk: $hint")
+                .setMessage("Petunjuk: $clue")
                 .setView(box)
                 .setNegativeButton("Lewat", null)
                 .setPositiveButton("Jawab", null)
@@ -1671,7 +1672,7 @@ class MainActivity : AppCompatActivity() {
             val input = EditText(this).apply {
                 hint = "1 - 50"
                 inputType = InputType.TYPE_CLASS_NUMBER
-                singleLine = true
+                isSingleLine = true
             }
             val dialog = AlertDialog.Builder(this)
                 .setTitle("🎯 Tebak Angka ${round + 1}/5")
@@ -1735,7 +1736,7 @@ class MainActivity : AppCompatActivity() {
             val input = EditText(this).apply {
                 hint = "Susun katanya"
                 inputType = InputType.TYPE_CLASS_TEXT
-                singleLine = true
+                isSingleLine = true
             }
             val dialog = AlertDialog.Builder(this)
                 .setTitle("🔀 Susun Kata ${index + 1}/5")
@@ -1853,16 +1854,9 @@ class MainActivity : AppCompatActivity() {
         val already = currentDay == storedDay && lastClaim > 0L
         val reward = (10 + (streak.coerceAtMost(6) * 5))
         val message = if (already) {
-            "Check-in hari ini sudah diambil.
-Streak: $streak hari
-Kembali besok untuk melanjutkan."
+            "Check-in hari ini sudah diambil.\nStreak: $streak hari\nKembali besok untuk melanjutkan."
         } else {
-            "Quest hari ini:
-• Buka minimal 1 mini game
-• Main sampai satu ronde selesai
-• Klaim hadiah harian
-
-Hadiah: +$reward poin"
+            "Quest hari ini:\n• Buka minimal 1 mini game\n• Main sampai satu ronde selesai\n• Klaim hadiah harian\n\nHadiah: +$reward poin"
         }
         AlertDialog.Builder(this)
             .setTitle("🏁 Daily Quest • 🔥 $streak")
