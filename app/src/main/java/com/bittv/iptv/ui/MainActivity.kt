@@ -1,6 +1,7 @@
 package com.bittv.iptv.ui
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
@@ -15,6 +16,7 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -62,12 +64,19 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bittv.iptv.R
+import com.bittv.iptv.ads.AdManager
+import com.bittv.iptv.market.VirtualMarketActivity
+import com.bittv.iptv.game.GameHubActivity
+import com.bittv.iptv.game.RpgWorldActivity
+import com.bittv.iptv.social.MabarActivity
+import com.bittv.iptv.social.SocialHubActivity
 import com.bittv.iptv.config.AppConfig
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.data.Channel
 import com.bittv.iptv.data.M3uParser
 import com.bittv.iptv.service.MusicPlayerService
 import com.bittv.iptv.ews.EwsLocationManager
+import com.bittv.iptv.util.AppProfileManager
 import com.bittv.iptv.util.AppUpdateChecker
 import com.bittv.iptv.util.ClearKeyUtil
 import com.bittv.iptv.util.EpgParser
@@ -78,16 +87,20 @@ import com.bittv.iptv.util.MusicRepository
 import com.bittv.iptv.util.PlaylistNotification
 import com.bittv.iptv.util.PointsManager
 import com.bittv.iptv.util.FreeNotification
+import com.bittv.iptv.util.GameNotification
+import com.bittv.iptv.util.GameProgressManager
 import com.bittv.iptv.util.RemotePushManager
 import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
 import com.bittv.iptv.util.TebakGambarRepository
 import com.bittv.iptv.util.ThrottlingDataSource
 import com.bittv.iptv.util.ViewerPresenceManager
+import com.bittv.iptv.util.WatchRewardManager
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
 import com.bittv.iptv.worker.EwsUpdateWorker
 import com.bittv.iptv.worker.FreeNotificationWorker
+import com.bittv.iptv.worker.GameNotificationWorker
 import com.bittv.iptv.worker.PlaylistUpdateWorker
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -128,6 +141,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNavGameLabel: TextView
     private lateinit var bottomNavBar: View
     private lateinit var bottomNavDivider: View
+    private lateinit var bottomNavSettings: View
+    private lateinit var bottomNavSettingsLabel: TextView
 
     // --- Overlay "Update Wajib". Muncul kalau update.json bilang
     //     mandatory=true dan ada versi lebih baru dari yang terpasang. ---
@@ -153,6 +168,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gameAnswerInput: EditText
 
     private var isGameTabActive = false
+    private var isSettingsTabActive = false
     private var gameScore = 0
     private var gameItems: List<TebakGambarRepository.Item> = emptyList()
     private var gameCurrentItem: TebakGambarRepository.Item? = null
@@ -165,6 +181,8 @@ class MainActivity : AppCompatActivity() {
     //     bisa lanjut muter di background kayak Spotify (beda dari video TV
     //     yang emang sengaja berhenti kalau gak di tab TV). ---
     private lateinit var gameCardMusik: View
+    private lateinit var gameExtraCardsContainer: ViewGroup
+    private lateinit var gameHubPointsText: TextView
     private lateinit var musicContainer: View
     private lateinit var musicBackButton: View
     private lateinit var musicSearchInput: EditText
@@ -216,6 +234,28 @@ class MainActivity : AppCompatActivity() {
     private val favorites = linkedSetOf<String>()
     private val history = ArrayDeque<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Reward hanya dihitung saat TV benar-benar playing di foreground.
+    private val watchRewardRunnable = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed || !activityStarted || !isTvTabVisible() || player?.isPlaying != true) return
+            val reward = WatchRewardManager.tick(this@MainActivity, 30_000L)
+            if (reward.earned > 0) {
+                refreshGameHubPoints()
+                if (::gameScoreText.isInitialized) gameScoreText.text = "Score: $gameScore • +${reward.earned} poin TV"
+            }
+            mainHandler.postDelayed(this, 30_000L)
+        }
+    }
+
+    private fun startWatchRewardTicker() {
+        mainHandler.removeCallbacks(watchRewardRunnable)
+        if (player?.isPlaying == true && isTvTabVisible()) mainHandler.postDelayed(watchRewardRunnable, 30_000L)
+    }
+
+    private fun stopWatchRewardTicker() {
+        mainHandler.removeCallbacks(watchRewardRunnable)
+    }
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     private var player: ExoPlayer? = null
@@ -223,6 +263,10 @@ class MainActivity : AppCompatActivity() {
     private var dataSaverMaxBitrateBps: Int = 0
     private lateinit var dataSaverRow: android.view.View
     private lateinit var dataSaverValueText: android.widget.TextView
+    private lateinit var settingsContentContainer: View
+    private lateinit var profileNameText: TextView
+    private lateinit var settingsPointsText: TextView
+    private lateinit var settingsStatusText: TextView
     private var activeChannel: Channel? = null
     private var automaticRetries = 0
     private var currentFilter = "All"
@@ -262,7 +306,7 @@ class MainActivity : AppCompatActivity() {
     private val remotePlaylistReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: android.content.Intent) {
             if (intent.action != PlaylistUpdateWorker.ACTION_REMOTE_PLAYLIST_UPDATED) return
-            if (!startupComplete || !activityStarted || isFinishing || isDestroyed) return
+            if (!startupComplete || !activityStarted || isFinishing || isDestroyed || !isTvTabVisible()) return
 
             val snapshot = PlaylistRepository.consumeLatestSnapshot() ?: return
             applyLatestRemoteSnapshot(snapshot, forceReconnect = false)
@@ -288,6 +332,10 @@ class MainActivity : AppCompatActivity() {
         restoreState()
         configureBackHandling()
         configureUi()
+        mainHandler.postDelayed({ ensureProfileName(force = false) }, 1000L)
+        if (intent?.getBooleanExtra("open_game", false) == true) {
+            mainHandler.postDelayed({ if (!isFinishing && !isDestroyed) showGameTab() }, 250L)
+        }
 
         viewerPresence = ViewerPresenceManager(this) { counts ->
             mainHandler.post {
@@ -323,6 +371,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent?.getBooleanExtra("open_game", false) == true) {
+            mainHandler.post { if (!isFinishing && !isDestroyed) showGameTab() }
+        }
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(KEY_WAS_FULLSCREEN, isFullscreen)
@@ -354,8 +410,10 @@ class MainActivity : AppCompatActivity() {
         filterMenuButton.setOnClickListener { toggleFilterCard() }
         bottomNavTv = findViewById(R.id.bottomNavTv)
         bottomNavGame = findViewById(R.id.bottomNavGame)
+        bottomNavSettings = findViewById(R.id.bottomNavSettings)
         bottomNavTvLabel = findViewById(R.id.bottomNavTvLabel)
         bottomNavGameLabel = findViewById(R.id.bottomNavGameLabel)
+        bottomNavSettingsLabel = findViewById(R.id.bottomNavSettingsLabel)
         bottomNavBar = findViewById(R.id.bottomNavBar)
         bottomNavDivider = findViewById(R.id.bottomNavDivider)
 
@@ -368,6 +426,18 @@ class MainActivity : AppCompatActivity() {
         mandatoryUpdateProgress = findViewById(R.id.mandatoryUpdateProgress)
         mandatoryUpdateButton = findViewById(R.id.mandatoryUpdateButton)
 
+        settingsContentContainer = findViewById(R.id.settingsContentContainer)
+        profileNameText = findViewById(R.id.profileNameText)
+        settingsPointsText = findViewById(R.id.settingsPointsText)
+        settingsStatusText = findViewById(R.id.settingsStatusText)
+        findViewById<Button>(R.id.settingsDailyBonusButton).setOnClickListener { claimDailyBonus() }
+        findViewById<Button>(R.id.settingsPointShopButton).setOnClickListener { showPointShop() }
+        findViewById<Button>(R.id.settingsSocialButton).setOnClickListener { startActivity(Intent(this, SocialHubActivity::class.java)) }
+        findViewById<Button>(R.id.settingsMarketButton).setOnClickListener { startActivity(Intent(this, VirtualMarketActivity::class.java)) }
+        findViewById<Button>(R.id.settingsMabarButton).setOnClickListener { startActivity(Intent(this, MabarActivity::class.java)) }
+        findViewById<Button>(R.id.settingsEwsScanButton).setOnClickListener { runEwsScanNowFromSettings() }
+        findViewById<Button>(R.id.settingsChangeNameButton).setOnClickListener { ensureProfileName(force = true) }
+        findViewById<Button>(R.id.settingsLogoutButton).setOnClickListener { performLocalLogout() }
         tvContentContainer = findViewById(R.id.tvContentContainer)
         gameContentContainer = findViewById(R.id.gameContentContainer)
         gameMenuContainer = findViewById(R.id.gameMenuContainer)
@@ -398,6 +468,8 @@ class MainActivity : AppCompatActivity() {
 
         // --- Wiring fitur Musik ---
         gameCardMusik = findViewById(R.id.gameCardMusik)
+        gameExtraCardsContainer = findViewById(R.id.gameExtraCardsContainer)
+        gameHubPointsText = findViewById(R.id.gameHubPointsText)
         musicContainer = findViewById(R.id.musicContainer)
         musicBackButton = findViewById(R.id.musicBackButton)
         musicSearchInput = findViewById(R.id.musicSearchInput)
@@ -416,6 +488,7 @@ class MainActivity : AppCompatActivity() {
 
         // Kartu "Musik" diaktifkan lagi: klik kartu -> buka layar musik.
         gameCardMusik.setOnClickListener { openMusic() }
+        setupExtraGameCards()
         musicBackButton.setOnClickListener { closeMusic() }
         musicSearchButton.setOnClickListener { performMusicSearch() }
         musicSearchInput.setOnEditorActionListener { _, actionId, event ->
@@ -458,7 +531,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * targetSdk 35 forces edge-to-edge, so without this the top bar and the
+     * targetSdk 36 forces edge-to-edge, so without this the top bar and the
      * bottom nav draw underneath the status bar / gesture bar on some phones
      * (that's the overlap you saw in the screenshot). This pushes both bars
      * out by exactly the system inset on whichever device it runs on, instead
@@ -485,6 +558,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureUi() {
         PlaylistNotification.ensureChannel(this)
+        EwsNotification.ensureChannel(this)
+        GameNotification.ensureChannel(this)
+        AdManager.initialize(this)
+        GameNotificationWorker.schedule(this)
         requestNotificationPermissionIfNeeded()
         // Android 13+ only allows one runtime-permission dialog flow at a time.
         // Jangan langsung menembakkan dialog lokasi di frame yang sama dengan
@@ -519,7 +596,7 @@ class MainActivity : AppCompatActivity() {
                             // dari layar ini selain lewat tombol update.
                         }
                         isFullscreen -> exitFullscreen()
-                        isGameTabActive -> showTvTab()
+                        isGameTabActive || isSettingsTabActive -> showTvTab()
                         else -> {
                             isEnabled = false
                             onBackPressedDispatcher.onBackPressed()
@@ -759,7 +836,7 @@ class MainActivity : AppCompatActivity() {
             )
 
         if (playerConfigChanged) {
-            if (startupComplete && !isGameTabActive && activityStarted) {
+            if (startupComplete && isTvTabVisible() && activityStarted) {
                 reconnectActiveChannel()
             } else {
                 remotePlayerConfigDirty = true
@@ -878,6 +955,8 @@ class MainActivity : AppCompatActivity() {
 
         bottomNavTv.setOnClickListener { showTvTab() }
         bottomNavGame.setOnClickListener { showGameTab() }
+        bottomNavSettings.setOnClickListener { showSettingsTab() }
+        refreshProfileUi()
 
         searchInput.addTextChangedListener(SimpleTextWatcher { applyFilter() })
 
@@ -961,21 +1040,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTvTab() {
-        if (!isGameTabActive) return
+        if (!isGameTabActive && !isSettingsTabActive) return
         stopMusicForTvMode()
+        val from = when {
+            gameContentContainer.visibility == View.VISIBLE -> gameContentContainer
+            settingsContentContainer.visibility == View.VISIBLE -> settingsContentContainer
+            else -> tvContentContainer
+        }
         isGameTabActive = false
-
-        crossFadeSwap(from = gameContentContainer, to = tvContentContainer)
+        isSettingsTabActive = false
+        settingsContentContainer.visibility = View.GONE
+        crossFadeSwap(from = from, to = tvContentContainer)
         bottomNavTvLabel.setTextColor(resources.getColor(R.color.accent, theme))
         bottomNavGameLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
-
-        // Timer dijeda (bukan direset) selama keluar dari tab Game, biar pas
-        // balik lagi sisa waktunya masih sama seperti pas ditinggal.
+        bottomNavSettingsLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
         gameCountdown?.cancel()
+        gameMenuContainer.visibility = View.VISIBLE
+        tebakGambarContainer.visibility = View.GONE
 
-        // Video otomatis lanjut muter lagi pas balik ke tab TV. Jika M3U
-        // sempat berubah ketika tab Game sedang aktif, rebuild player dulu
-        // supaya URL/headers/DRM terbaru benar-benar dipakai.
         if (remotePlayerConfigDirty && activeChannel != null) {
             remotePlayerConfigDirty = false
             reconnectActiveChannel()
@@ -983,52 +1065,72 @@ class MainActivity : AppCompatActivity() {
             player?.playWhenReady = true
             player?.play()
         }
-
-        // Nyalain lagi animasi "LIVE" di channel list (sempat dimatiin
-        // pas pindah ke tab Game, biar gak jalan sia-sia di belakang layar).
         resumeChannelListPulses()
     }
 
     private fun showGameTab() {
         if (isGameTabActive) return
+        val from = when {
+            tvContentContainer.visibility == View.VISIBLE -> tvContentContainer
+            settingsContentContainer.visibility == View.VISIBLE -> settingsContentContainer
+            else -> gameContentContainer
+        }
         isGameTabActive = true
-
-        // Safety net: jika sebelumnya user keluar ke TV dari layar Musik,
-        // pastikan panel anak Game tidak semuanya GONE.
+        isSettingsTabActive = false
+        settingsContentContainer.visibility = View.GONE
         musicContainer.visibility = View.GONE
         musicPlayerBar.visibility = View.GONE
         musicNowPlayingContainer.visibility = View.GONE
-        if (tebakGambarContainer.visibility != View.VISIBLE) {
-            gameMenuContainer.visibility = View.VISIBLE
-        }
-
-        crossFadeSwap(from = tvContentContainer, to = gameContentContainer)
-        bottomNavGameLabel.setTextColor(resources.getColor(R.color.accent, theme))
+        if (tebakGambarContainer.visibility != View.VISIBLE) gameMenuContainer.visibility = View.VISIBLE
+        crossFadeSwap(from = from, to = gameContentContainer)
+        bottomNavGameLabel.setTextColor(resources.getColor(R.color.game_accent_light, theme))
         bottomNavTvLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
+        bottomNavSettingsLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
+        refreshGameHubPoints()
 
-        // Video otomatis berhenti selama di tab Game, hemat data/baterai.
         player?.playWhenReady = false
         player?.pause()
         viewerPresence.setWatching(null, false)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-        // Channel list-nya lagi disembunyikan total (GONE), jadi animasi
-        // "LIVE" yang lagi jalan di row-row-nya cuma buang-buang CPU/baterai
-        // tanpa ada yang lihat — matiin dulu.
         pauseChannelListPulses()
-
-        // Kalau user sebelumnya lagi di tengah main "Tebak Gambar" (bukan di
-        // menu pilih game), lanjutin lagi timernya. Kalau masih di menu,
-        // biarin di menu — jangan langsung nyelonong ke game.
-        if (tebakGambarContainer.visibility == View.VISIBLE && gameCurrentItem != null) {
-            startGameCountdown(gameRemainingMs)
-        }
+        if (tebakGambarContainer.visibility == View.VISIBLE && gameCurrentItem != null) startGameCountdown(gameRemainingMs)
     }
+
+    private fun showSettingsTab() {
+        if (isSettingsTabActive) return
+        val from = when {
+            tvContentContainer.visibility == View.VISIBLE -> tvContentContainer
+            gameContentContainer.visibility == View.VISIBLE -> gameContentContainer
+            else -> settingsContentContainer
+        }
+        stopMusicForTvMode()
+        isSettingsTabActive = true
+        isGameTabActive = false
+        gameCountdown?.cancel()
+        player?.playWhenReady = false
+        player?.pause()
+        viewerPresence.setWatching(null, false)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        pauseChannelListPulses()
+        gameMenuContainer.visibility = View.VISIBLE
+        tebakGambarContainer.visibility = View.GONE
+        musicContainer.visibility = View.GONE
+        musicPlayerBar.visibility = View.GONE
+        musicNowPlayingContainer.visibility = View.GONE
+        crossFadeSwap(from = from, to = settingsContentContainer)
+        bottomNavTvLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
+        bottomNavGameLabel.setTextColor(resources.getColor(R.color.text_secondary, theme))
+        bottomNavSettingsLabel.setTextColor(resources.getColor(R.color.brand_blue_light, theme))
+        refreshProfileUi()
+    }
+
+    private fun isTvTabVisible(): Boolean = !isGameTabActive && !isSettingsTabActive
 
     /** Buka layar "Tebak Gambar" beneran, gantiin menu pilih game. */
     private fun openTebakGambar() {
         gameMenuContainer.visibility = View.GONE
         tebakGambarContainer.visibility = View.VISIBLE
+        refreshGameHubPoints()
         gameScoreText.text = "Skor: $gameScore • Poin: ${PointsManager.getTotal(this)}"
 
         if (gameItems.isEmpty() && !gameLoading) {
@@ -1263,6 +1365,553 @@ class MainActivity : AppCompatActivity() {
     private fun toggleMusicPlayPause() {
         val controller = mediaController ?: return
         if (controller.isPlaying) controller.pause() else controller.play()
+    }
+
+    private fun ensureProfileName(force: Boolean) {
+        if (!force && AppProfileManager.hasName(this)) {
+            refreshProfileUi()
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "Nama kamu"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            setText(AppProfileManager.getName(this@MainActivity))
+            selectAll()
+            maxLines = 1
+        }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 0, 48, 0)
+            addView(input, android.widget.LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        val builder = AlertDialog.Builder(this)
+            .setTitle(if (force) "Ubah nama" else "Selamat datang 👋")
+            .setMessage(if (force) "Nama ini dipakai sebagai profil lokal di aplikasi." else "Masukkan nama untuk membuat profil lokal.")
+            .setView(box)
+            .setCancelable(force)
+            .setPositiveButton("Simpan", null)
+        if (force) builder.setNegativeButton("Batal", null)
+        val dialog = builder.create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = input.text?.toString()?.trim().orEmpty()
+                if (name.length < 2) {
+                    input.error = "Minimal 2 karakter"
+                    return@setOnClickListener
+                }
+                AppProfileManager.setName(this, name)
+                refreshProfileUi()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun refreshProfileUi() {
+        val name = AppProfileManager.getName(this).ifBlank { "Tamu" }
+        if (::profileNameText.isInitialized) profileNameText.text = name
+        if (::settingsPointsText.isInitialized) {
+            settingsPointsText.text = "💎 ${PointsManager.getTotal(this)} poin"
+        }
+    }
+
+    private fun refreshGameHubPoints() {
+        if (::gameHubPointsText.isInitialized) {
+            gameHubPointsText.text = "💎 ${PointsManager.getTotal(this)} poin"
+        }
+    }
+
+    private fun claimDailyBonus() {
+        val total = PointsManager.claimDailyBonus(this)
+        if (total == null) {
+            settingsStatusText.text = "Bonus harian sudah diambil. Coba lagi besok."
+        } else {
+            settingsStatusText.text = "🎁 Bonus harian +10 poin! Total sekarang $total."
+        }
+        refreshProfileUi()
+        refreshGameHubPoints()
+    }
+
+    private fun showPointShop() {
+        val items = GameProgressManager.shopItems
+        val lines = items.map { "${it.name} • ${it.cost} poin\n${it.description}" }.toTypedArray()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("🛍️ Point Shop • 💎 ${PointsManager.getTotal(this)}")
+            .setItems(lines) { _, which ->
+                val item = items[which]
+                if (GameProgressManager.buy(this, item)) {
+                    val total = PointsManager.getTotal(this)
+                    settingsStatusText.text = "✅ ${item.name} dibeli. Sisa $total poin."
+                } else {
+                    settingsStatusText.text = "Poin belum cukup untuk ${item.name}."
+                }
+                refreshProfileUi()
+                refreshGameHubPoints()
+            }
+            .setPositiveButton("💰 Jual Item") { _, _ -> showSellShop() }
+            .setNegativeButton("Tutup", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun showSellShop() {
+        val items = GameProgressManager.shopItems.filter { it.id != "xp_book" }
+        val lines = items.map { "${it.name} • dapat ${(it.cost / 2).coerceAtLeast(1)} poin" }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("💰 Jual Item Virtual")
+            .setItems(lines) { _, which ->
+                val item = items[which]
+                if (GameProgressManager.sell(this, item)) {
+                    settingsStatusText.text = "✅ ${item.name} dijual. +${(item.cost / 2).coerceAtLeast(1)} poin."
+                } else {
+                    settingsStatusText.text = "Kamu belum punya ${item.name}."
+                }
+                refreshProfileUi()
+                refreshGameHubPoints()
+            }
+            .setPositiveButton("Kembali ke Shop") { _, _ -> showPointShop() }
+            .setNegativeButton("Tutup", null)
+            .show()
+    }
+
+    private fun runEwsScanNowFromSettings() {
+        if (!EwsLocationManager.hasPermission(this)) {
+            settingsStatusText.text = "Izin lokasi diperlukan untuk EWS."
+            requestLocationPermissionIfNeeded()
+            return
+        }
+        settingsStatusText.text = "🚨 Memperbarui lokasi lalu menjalankan scan EWS..."
+        EwsUpdateWorker.schedule(applicationContext, enqueueImmediate = false)
+        CoroutineScope(Dispatchers.IO).launch {
+            val location = EwsLocationManager.refreshAndSave(applicationContext)
+            if (location != null) EwsUpdateWorker.enqueueNow(applicationContext)
+            mainHandler.post {
+                if (!isFinishing && !isDestroyed) {
+                    settingsStatusText.text = if (location != null) {
+                        "🚨 Scan EWS dijalankan. Event baru/aktif akan diproses di background."
+                    } else {
+                        "Lokasi belum tersedia. Pastikan GPS aktif lalu coba lagi."
+                    }
+                }
+            }
+        }
+    }
+
+    private fun performLocalLogout() {
+        if (!::viewerPresence.isInitialized) return
+        viewerPresence.setWatching(null, false)
+        viewerPresence.stop()
+        runCatching {
+            val firebaseApp = com.google.firebase.FirebaseApp.getApps(this).firstOrNull()
+            if (firebaseApp != null) com.google.firebase.auth.FirebaseAuth.getInstance(firebaseApp).signOut()
+        }
+        AppProfileManager.logout(this)
+        refreshProfileUi()
+        viewerPresence.start()
+        ensureProfileName(force = true)
+    }
+
+    private data class QuizQuestion(
+        val question: String,
+        val options: List<String>,
+        val answerIndex: Int
+    )
+
+    private fun showQuizGame() {
+        val questions = listOf(
+            QuizQuestion("Planet terdekat dengan Matahari?", listOf("Venus", "Merkurius", "Mars", "Bumi"), 1),
+            QuizQuestion("Ibukota Indonesia?", listOf("Bandung", "Surabaya", "Jakarta", "Medan"), 2),
+            QuizQuestion("2 × 8 + 4 = ?", listOf("16", "18", "20", "22"), 2),
+            QuizQuestion("Warna campuran biru + kuning?", listOf("Hijau", "Ungu", "Oranye", "Merah"), 0),
+            QuizQuestion("Hewan mamalia yang bisa terbang?", listOf("Elang", "Kelelawar", "Ayam", "Penguin"), 1)
+        )
+        fun ask(index: Int, score: Int) {
+            if (index >= questions.size) {
+                AlertDialog.Builder(this)
+                    .setTitle("🏆 Quiz selesai")
+                    .setMessage("Skor kamu: $score/${questions.size} • +${score * 5} poin")
+                    .setPositiveButton("Mantap", null)
+                    .show()
+                refreshProfileUi()
+                refreshGameHubPoints()
+                return
+            }
+            val q = questions[index]
+            AlertDialog.Builder(this)
+                .setTitle("⚡ Quiz Kilat ${index + 1}/${questions.size}")
+                .setMessage(q.question)
+                .setItems(q.options.toTypedArray()) { _, which ->
+                    val correct = which == q.answerIndex
+                    val nextScore = if (correct) score + 1 else score
+                    if (correct) PointsManager.addPoints(this, 5)
+                    refreshGameHubPoints()
+                    mainHandler.postDelayed({ ask(index + 1, nextScore) }, 220L)
+                }
+                .setNegativeButton("Keluar", null)
+                .show()
+        }
+        ask(0, 0)
+    }
+
+    private fun showMathRush() {
+        fun ask(round: Int, score: Int) {
+            if (round >= 5) {
+                AlertDialog.Builder(this)
+                    .setTitle("🧠 Math Rush selesai")
+                    .setMessage("Benar $score/5 • +${score * 4} poin")
+                    .setPositiveButton("OK", null)
+                    .show()
+                refreshProfileUi()
+                refreshGameHubPoints()
+                return
+            }
+            val a = (4..18).random()
+            val b = (2..12).random()
+            val op = listOf('+', '-', '×').random()
+            val answer = when (op) { '+' -> a + b; '-' -> a - b; else -> a * b }
+            val input = EditText(this).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
+                hint = "Jawaban"
+                singleLine = true
+            }
+            val box = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(48, 0, 48, 0)
+                addView(input, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("➗ Math Rush ${round + 1}/5")
+                .setMessage("$a $op $b = ?")
+                .setView(box)
+                .setNegativeButton("Keluar", null)
+                .setPositiveButton("Jawab", null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val guess = input.text?.toString()?.toIntOrNull()
+                    val correct = guess == answer
+                    if (correct) PointsManager.addPoints(this, 4)
+                    dialog.dismiss()
+                    mainHandler.postDelayed({ ask(round + 1, if (correct) score + 1 else score) }, 150L)
+                }
+            }
+            dialog.show()
+        }
+        ask(0, 0)
+    }
+
+    private fun showTebakKataGame() {
+        val bank = listOf(
+            "komputer" to "Mesin elektronik untuk menjalankan program",
+            "internet" to "Jaringan global yang menghubungkan banyak perangkat",
+            "televisi" to "Perangkat untuk menonton siaran",
+            "programmer" to "Orang yang menulis kode",
+            "android" to "Sistem operasi mobile Google"
+        )
+        fun ask(index: Int, score: Int) {
+            if (index >= bank.size) {
+                AlertDialog.Builder(this)
+                    .setTitle("🔤 Tebak Kata selesai")
+                    .setMessage("Benar $score/5 • +${score * 5} poin")
+                    .setPositiveButton("OK", null)
+                    .show()
+                refreshProfileUi()
+                refreshGameHubPoints()
+                return
+            }
+            val (answer, hint) = bank[index]
+            val input = EditText(this).apply {
+                hint = "Jawabanmu"
+                singleLine = true
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            }
+            val box = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(48, 0, 48, 0)
+                addView(input, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("🔤 Tebak Kata ${index + 1}/5")
+                .setMessage("Petunjuk: $hint")
+                .setView(box)
+                .setNegativeButton("Lewat", null)
+                .setPositiveButton("Jawab", null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val correct = input.text?.toString()?.trim()?.equals(answer, true) == true
+                    if (correct) PointsManager.addPoints(this, 5)
+                    dialog.dismiss()
+                    mainHandler.postDelayed({ ask(index + 1, if (correct) score + 1 else score) }, 150L)
+                }
+            }
+            dialog.show()
+        }
+        ask(0, 0)
+    }
+
+    private fun showGuessNumberGame() {
+        var round = 0
+        var score = 0
+        fun ask() {
+            if (round >= 5) {
+                AlertDialog.Builder(this)
+                    .setTitle("🎯 Tebak Angka selesai")
+                    .setMessage("Berhasil $score/5 • +${score * 4} poin")
+                    .setPositiveButton("OK", null)
+                    .show()
+                refreshProfileUi()
+                refreshGameHubPoints()
+                return
+            }
+            val answer = (1..50).random()
+            val input = EditText(this).apply {
+                hint = "1 - 50"
+                inputType = InputType.TYPE_CLASS_NUMBER
+                singleLine = true
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("🎯 Tebak Angka ${round + 1}/5")
+                .setMessage("Cari angka rahasia antara 1 sampai 50.")
+                .setView(input)
+                .setNegativeButton("Keluar", null)
+                .setPositiveButton("Tebak", null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val guess = input.text?.toString()?.trim()?.toIntOrNull()
+                    if (guess == null) {
+                        input.error = "Masukkan angka"
+                        return@setOnClickListener
+                    }
+                    val correct = guess == answer
+                    if (correct) {
+                        score++
+                        PointsManager.addPoints(this, 4)
+                    }
+                    round++
+                    val hint = when {
+                        correct -> "Benar! 🎉"
+                        guess < answer -> "Masih terlalu kecil."
+                        else -> "Masih terlalu besar."
+                    }
+                    dialog.dismiss()
+                    AlertDialog.Builder(this)
+                        .setTitle(if (correct) "✅ Mantap" else "💡 Petunjuk")
+                        .setMessage("$hint\nAngka rahasianya: $answer")
+                        .setPositiveButton("Lanjut") { _, _ -> ask() }
+                        .show()
+                    refreshGameHubPoints()
+                }
+            }
+            dialog.show()
+        }
+        ask()
+    }
+
+    private fun showScrambleGame() {
+        val bank = listOf(
+            "internet", "komputer", "televisi", "programmer", "android",
+            "playlist", "channel", "notifikasi"
+        )
+        var index = 0
+        var score = 0
+        fun ask() {
+            if (index >= 5) {
+                AlertDialog.Builder(this)
+                    .setTitle("🔀 Susun Kata selesai")
+                    .setMessage("Benar $score/5 • +${score * 5} poin")
+                    .setPositiveButton("OK", null)
+                    .show()
+                refreshProfileUi()
+                refreshGameHubPoints()
+                return
+            }
+            val answer = bank.random()
+            val shuffled = answer.toList().shuffled().joinToString("")
+            val input = EditText(this).apply {
+                hint = "Susun katanya"
+                inputType = InputType.TYPE_CLASS_TEXT
+                singleLine = true
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("🔀 Susun Kata ${index + 1}/5")
+                .setMessage("Huruf acak: $shuffled")
+                .setView(input)
+                .setNegativeButton("Keluar", null)
+                .setPositiveButton("Jawab", null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val correct = input.text?.toString()?.trim()?.equals(answer, true) == true
+                    if (correct) {
+                        score++
+                        PointsManager.addPoints(this, 5)
+                    }
+                    index++
+                    dialog.dismiss()
+                    mainHandler.postDelayed({ ask() }, 150L)
+                    refreshGameHubPoints()
+                }
+            }
+            dialog.show()
+        }
+        ask()
+    }
+
+    private fun showRpgGame() {
+        data class Enemy(val name: String, var hp: Int, val maxHp: Int, val attack: Int, val xp: Int, val points: Int)
+        var enemy: Enemy? = null
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(40, 8, 40, 8)
+        }
+        val status = TextView(this).apply { textSize = 14f }
+        val enemyText = TextView(this).apply { textSize = 14f; setPadding(0, 18, 0, 18) }
+        container.addView(status)
+        container.addView(enemyText)
+        val buttons = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL }
+        container.addView(buttons)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("⚔️ RPG Adventure")
+            .setView(container)
+            .setNegativeButton("Tutup", null)
+            .create()
+
+        fun render(message: String = "Jelajahi dunia dan kalahkan monster.") {
+            val state = GameProgressManager.get(this)
+            status.text = "Level ${state.level} • HP ${state.hp}/${state.maxHp}\nATK ${state.attack} • DEF ${state.defense} • XP ${state.xp}/${state.xpToNext}\nPotion ${state.potions}"
+            enemyText.text = enemy?.let { "👾 ${it.name}\nHP ${it.hp}/${it.maxHp}\n\n$message" } ?: message
+        }
+        fun addAction(label: String, action: () -> Unit) {
+            Button(this).apply {
+                text = label
+                setAllCaps(false)
+                setOnClickListener { action() }
+                buttons.addView(this, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }
+        addAction("🗺️ Jelajah") {
+            if (enemy == null) {
+                val level = GameProgressManager.get(this).level
+                val pool = listOf("Slime Hijau", "Goblin Batu", "Serigala Malam", "Bandit Jalanan")
+                val name = pool.random()
+                val hp = 35 + level * 12
+                enemy = Enemy(name, hp, hp, 5 + level * 2, 25 + level * 8, 8 + level * 2)
+                render("Musuh muncul! Serang untuk bertarung.")
+            }
+        }
+        addAction("⚔️ Serang") {
+            val e = enemy
+            if (e == null) {
+                render("Belum ada musuh. Tekan Jelajah.")
+                return@addAction
+            }
+            val state = GameProgressManager.get(this)
+            val damage = (state.attack + (0..6).random()).coerceAtLeast(1)
+            e.hp -= damage
+            var message = "Kamu memberi $damage damage."
+            if (e.hp <= 0) {
+                PointsManager.addPoints(this, e.points)
+                val afterXp = GameProgressManager.addXp(this, e.xp)
+                enemy = null
+                message += " Menang! +${e.points} poin, +${e.xp} XP. Level ${afterXp.level}."
+            } else {
+                val taken = (e.attack - state.defense + (0..3).random()).coerceAtLeast(1)
+                state.hp = (state.hp - taken).coerceAtLeast(0)
+                GameProgressManager.save(this, state)
+                message += " Monster membalas $taken damage."
+                if (state.hp <= 0) {
+                    state.hp = state.maxHp
+                    GameProgressManager.save(this, state)
+                    message += " Kamu pulih kembali ke HP penuh."
+                }
+            }
+            render(message)
+            refreshProfileUi()
+            refreshGameHubPoints()
+        }
+        addAction("🧪 Minum Potion") {
+            val state = GameProgressManager.get(this)
+            render(if (GameProgressManager.drinkPotion(this)) "Potion dipakai. HP bertambah." else if (state.potions <= 0) "Potion habis. Beli di Point Shop." else "HP sudah penuh.")
+        }
+        addAction("🛍️ Point Shop") { showPointShop(); render("Shop tersedia untuk upgrade RPG.") }
+        render()
+        dialog.show()
+    }
+
+    private fun showDailyQuestDialog() {
+        val streak = getSharedPreferences("bittv_daily_quest", MODE_PRIVATE).getInt("streak", 0)
+        val lastClaim = getSharedPreferences("bittv_daily_quest", MODE_PRIVATE).getLong("last_claim", 0L)
+        val day = java.text.SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Jakarta") }.format(java.util.Date())
+        val currentDay = day.toLongOrNull() ?: 0L
+        val storedDay = getSharedPreferences("bittv_daily_quest", MODE_PRIVATE).getLong("day_stamp", 0L)
+        val already = currentDay == storedDay && lastClaim > 0L
+        val reward = (10 + (streak.coerceAtMost(6) * 5))
+        val message = if (already) {
+            "Check-in hari ini sudah diambil.
+Streak: $streak hari
+Kembali besok untuk melanjutkan."
+        } else {
+            "Quest hari ini:
+• Buka minimal 1 mini game
+• Main sampai satu ronde selesai
+• Klaim hadiah harian
+
+Hadiah: +$reward poin"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🏁 Daily Quest • 🔥 $streak")
+            .setMessage(message)
+            .setNegativeButton("Tutup", null)
+            .setPositiveButton(if (already) "OK" else "Klaim Hadiah") { _, _ ->
+                if (!already) {
+                    getSharedPreferences("bittv_daily_quest", MODE_PRIVATE).edit()
+                        .putLong("day_stamp", currentDay)
+                        .putLong("last_claim", System.currentTimeMillis())
+                        .putInt("streak", streak + 1)
+                        .apply()
+                    val total = PointsManager.addPoints(this, reward)
+                    refreshProfileUi()
+                    refreshGameHubPoints()
+                    GameNotification.show(this, "🏁 Daily Quest selesai", "+$reward poin • total $total")
+                }
+            }
+            .show()
+    }
+
+    private fun setupExtraGameCards() {
+        val items = listOf(
+            (Triple("🌌", "BITTV Gameverse", "RPG besar • content pack • arcade • mabar 2–4 pemain") to { startActivity(Intent(this, GameHubActivity::class.java)) }),
+            (Triple("⚡", "Quiz Kilat", "5 soal cepat • +5 poin/jawaban") to { showQuizGame() }),
+            (Triple("🧠", "Math Rush", "Hitung cepat • latihan otak") to { showMathRush() }),
+            (Triple("🔤", "Tebak Kata", "5 ronde • pakai petunjuk") to { showTebakKataGame() }),
+            (Triple("🗺️", "RPG Adventure", "Level, misi, XP, dungeon virtual") to { showRpgGame() }),
+            (Triple("⚔️", "RPG World", "Battle, elite dungeon, loot, daily quest & world boss") to { startActivity(Intent(this, RpgWorldActivity::class.java)) }),
+            (Triple("🎯", "Tebak Angka", "Cari angka rahasia • +poin") to { showGuessNumberGame() }),
+            (Triple("🔀", "Susun Kata", "Susun huruf acak jadi kata") to { showScrambleGame() }),
+            (Triple("🏁", "Daily Quest", "Streak, check-in, dan hadiah harian") to { showDailyQuestDialog() }),
+            (Triple("👥", "Teman & Community", "Cari teman, invite code, transfer RAPO Coin") to { startActivity(Intent(this, SocialHubActivity::class.java)) }),
+            (Triple("📈", "Pasar Virtual", "Simulasi saham pakai RAPO Coin, tanpa uang nyata") to { startActivity(Intent(this, VirtualMarketActivity::class.java)) }),
+            (Triple("🎮", "Mabar Realtime", "Buat room dan main Tic-Tac-Toe bareng") to { startActivity(Intent(this, MabarActivity::class.java)) }),
+            (Triple("🤝", "Mabar Squad Raid", "2–4 pemain • quick match • boss energy • reward server") to { startActivity(Intent(this, com.bittv.iptv.social.MabarRaidActivity::class.java)) }),
+            (Triple("🛍️", "Point Shop", "Gunakan poin untuk item virtual") to { showPointShop() })
+        )
+        gameExtraCardsContainer.removeAllViews()
+        for ((data, click) in items) {
+            val card = layoutInflater.inflate(R.layout.item_game_card, gameExtraCardsContainer, false)
+            card.findViewById<TextView>(R.id.gameCardIcon).text = data.first
+            card.findViewById<TextView>(R.id.gameCardTitle).text = data.second
+            card.findViewById<TextView>(R.id.gameCardDescription).text = data.third
+            card.setOnClickListener { click() }
+            gameExtraCardsContainer.addView(card)
+        }
+        // Banner stays below the game grid; the ad SDK uses adaptive sizing for phones/tablets.
+        AdManager.attachBanner(this, gameExtraCardsContainer)
     }
 
     private fun loadGameBankThenStart() {
@@ -1603,8 +2252,10 @@ class MainActivity : AppCompatActivity() {
                 if (currentPlayer !== player) return
                 if (isPlaying) {
                     activeChannel?.id?.let { viewerPresence.setWatching(it, true) }
+                    startWatchRewardTicker()
                 } else {
                     viewerPresence.setWatching(null, false)
+                    stopWatchRewardTicker()
                 }
 
                 // Layar cuma dipaksa nyala pas video BENERAN lagi diputar
@@ -2004,7 +2655,7 @@ class MainActivity : AppCompatActivity() {
             mainHandler.post {
                 if (isFinishing || isDestroyed || !startupComplete || !activityStarted) return@post
                 val playerConfigChanged = applyParsedChannels(snapshot.content, parsed)
-                if (forceReconnect && !playerConfigChanged && !isGameTabActive && activeChannel != null) {
+                if (forceReconnect && !playerConfigChanged && isTvTabVisible() && activeChannel != null) {
                     reconnectActiveChannel()
                 }
                 statusText.text = "LIVE TV • Channel diperbarui otomatis"
@@ -2030,11 +2681,12 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         activityStarted = true
+        startWatchRewardTicker()
         if (RemotePushManager.isBaselineReady(this)) {
             RemotePushManager.ensureTopicSubscription(this)
         }
 
-        if (startupComplete && !isGameTabActive) {
+        if (startupComplete && isTvTabVisible()) {
             val pending = PlaylistRepository.consumeLatestSnapshot()
             if (pending != null) {
                 applyLatestRemoteSnapshot(pending, forceReconnect = true)
@@ -2061,12 +2713,12 @@ class MainActivity : AppCompatActivity() {
          * Kalau channel terakhir sudah tersedia, prepare ulang stream.
          * Tapi JANGAN kalau lagi di tab Game — video harus tetap diam.
          */
-        if (startupComplete && !isGameTabActive) {
+        if (startupComplete && isTvTabVisible()) {
             val channel = activeChannel
 
             if (channel != null) {
                 mainHandler.postDelayed({
-                    if (!isFinishing && !isDestroyed && startupComplete && !isGameTabActive) {
+                    if (!isFinishing && !isDestroyed && startupComplete && isTvTabVisible()) {
                         reconnectActiveChannel()
                     }
                 }, 150L)
@@ -2079,7 +2731,7 @@ class MainActivity : AppCompatActivity() {
             startGameCountdown(gameRemainingMs)
         }
 
-        if (!isGameTabActive) resumeChannelListPulses()
+        if (isTvTabVisible()) resumeChannelListPulses()
     }
 
     override fun onStop() {
@@ -2087,6 +2739,7 @@ class MainActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(foregroundCheckRunnable)
         gameCountdown?.cancel()
         pauseChannelListPulses()
+        stopWatchRewardTicker()
 
         /*
          * Jangan release player di sini.

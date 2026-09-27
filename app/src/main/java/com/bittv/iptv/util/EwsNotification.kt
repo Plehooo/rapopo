@@ -40,52 +40,70 @@ object EwsNotification {
 
     fun showNearbyOnce(context: Context, hazards: List<EwsHazard>) {
         synchronized(EVENT_LOCK) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
 
-        // Scan sukses tanpa hazard juga merupakan hasil yang valid. Pada
-        // instalasi baru, tandai baseline kosong agar hazard BARU pada scan
-        // berikutnya langsung dianggap event baru dan bisa dinotif.
-        if (hazards.isEmpty()) {
-            if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
-                prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
+            // Hasil kosong juga valid. Baseline ini mencegah scan berikutnya
+            // dianggap "scan pertama" terus-menerus.
+            if (hazards.isEmpty()) {
+                if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
+                    prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
+                }
+                return
             }
-            return
-        }
-        val seen = loadSeen(prefs)
-        val active = hazards
-            .filter { it.expiresAtMillis <= 0L || it.expiresAtMillis >= now }
-            .distinctBy(::eventKey)
-            .sortedWith(
-                compareByDescending<EwsHazard> { it.severity.weight }
-                    .thenBy { it.distanceKm }
-            )
 
-        // Fresh install / first EWS scan: establish a silent baseline.
-        if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
-            active.forEach { seen[eventKey(it)] = now } 
+            val seen = loadSeen(prefs)
+            val active = hazards
+                .filter { it.expiresAtMillis <= 0L || it.expiresAtMillis >= now }
+                .distinctBy(::eventKey)
+                .sortedWith(
+                    compareByDescending<EwsHazard> { it.severity.weight }
+                        .thenBy { it.distanceKm }
+                        .thenByDescending { it.occurredAtMillis }
+                )
+
+            val initialized = prefs.getBoolean(KEY_INITIALIZED, false)
+            if (!initialized) {
+                // Pada pemasangan baru, bahaya yang cukup serius tetap wajib
+                // masuk sebagai alert. INFO/WASPADA cukup menjadi baseline.
+                val urgent = active.filter { it.severity.weight >= EwsHazard.Severity.WATCH.weight }
+                active.forEach { seen[eventKey(it)] = now }
+                prune(seen, active, now)
+                saveSeen(prefs, seen, commit = true)
+                prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
+                if (urgent.isEmpty()) return
+                if (!notificationsAllowed(context)) return
+                postNotification(context, urgent, now)
+                return
+            }
+
+            // Semua event baru boleh masuk notifikasi; tidak dipotong cuma
+            // karena banyak event ditemukan dalam satu scan.
+            val unseen = active.filter { seen[eventKey(it)] == null }
+            if (unseen.isEmpty()) return
+            if (!notificationsAllowed(context)) return
+
+            // Commit sebelum notify: lifecycle/process death tidak akan membuat
+            // scan berikutnya mengirim event yang sama lagi.
+            unseen.forEach { seen[eventKey(it)] = now }
             prune(seen, active, now)
             saveSeen(prefs, seen, commit = true)
             prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
-            return
+            postNotification(context, unseen, now)
         }
+    }
 
-        // Full-in: SEMUA hazard baru dikirim, tidak ada lagi yang dipotong
-        // diam-diam oleh batas jumlah baris. BigTextStyle akan discroll kalau
-        // panjang; itu lebih baik daripada ada bahaya yang tidak pernah
-        // ternotifikasi cuma karena kalah urutan di daftar.
-        val unseen = active.filter { hazard ->
-            seen[eventKey(hazard)] == null
-        }
-        if (unseen.isEmpty()) return
-
+    private fun notificationsAllowed(context: Context): Boolean {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+        ) return false
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
 
-        val selected = unseen
+    private fun postNotification(context: Context, selected: List<EwsHazard>, now: Long) {
+        if (selected.isEmpty()) return
         ensureChannel(context)
+
         val body = selected.joinToString("\n") { formatHazard(it) } +
             "\n\nSumber: BMKG / MAGMA-PVMBG. Periksa kanal resmi untuk arahan keselamatan terbaru."
 
@@ -111,28 +129,15 @@ object EwsNotification {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setShowWhen(true)
+            .setWhen(highest.occurredAtMillis.takeIf { it > 0L } ?: now)
             .build()
 
-        // Commit the event state BEFORE posting the notification. This closes
-        // the race where a background worker posts a notification and Android
-        // kills/recreates the app process before SharedPreferences.apply()
-        // has flushed the seen-event state to disk. On the next app launch the
-        // same hazard is therefore already known and cannot notify again.
-        selected.forEach { seen[eventKey(it)] = now }
-        prune(seen, active, now)
-        saveSeen(prefs, seen, commit = true)
-        prefs.edit().putBoolean(KEY_INITIALIZED, true).commit()
-
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-    
-        }
     }
 
-    private fun eventKey(hazard: EwsHazard): String {
-        // A stable event identifier prevents distance jitter, feed ordering,
-        // or repeated worker scans from producing duplicate alerts.
-        return hazard.id.trim()
-    }
+    private fun eventKey(hazard: EwsHazard): String = hazard.id.trim()
 
     private fun loadSeen(prefs: android.content.SharedPreferences): MutableMap<String, Long> {
         val result = LinkedHashMap<String, Long>()
@@ -169,13 +174,9 @@ object EwsNotification {
         val iterator = seen.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            if (entry.value < cutoff && entry.key !in activeKeys) {
-                iterator.remove()
-            }
+            if (entry.value < cutoff && entry.key !in activeKeys) iterator.remove()
         }
-        while (seen.size > MAX_HISTORY) {
-            seen.remove(seen.keys.first())
-        }
+        while (seen.size > MAX_HISTORY) seen.remove(seen.keys.first())
     }
 
     private fun formatHazard(hazard: EwsHazard): String {

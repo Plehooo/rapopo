@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Public client access is disabled for uploads. Authenticated app users may
+    // read game content packs; packs are data files only and are installed into
+    // app-private storage by the client.
+    match /game-packs/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

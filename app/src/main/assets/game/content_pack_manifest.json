@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "packId": "bittv-gameverse-v2",
+  "recommendedStoragePath": "game-packs/v2/game_content.json",
+  "optionalLargeAssets": [
+    "game-packs/v2/art/",
+    "game-packs/v2/audio/",
+    "game-packs/v2/cutscenes/"
+  ],
+  "policy": "data-only-on-client; never execute downloaded code"
+}

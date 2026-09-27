@@ -20,6 +20,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
+        android:name=".BITTVApplication"
         android:allowBackup="true"
         android:icon="@drawable/ic_app_logo"
         android:roundIcon="@drawable/ic_app_logo"
@@ -34,6 +35,11 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="remote_announcements" />
+
+        <!-- Google Mobile Ads: replace the test app id with your own AdMob App ID before production release. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713" />
 
         <receiver
             android:name=".receiver.PlaylistBootReceiver"
@@ -61,6 +67,15 @@
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false" />
+
+        <activity android:name=".social.SocialHubActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".social.MabarActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".market.VirtualMarketActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".game.RpgWorldActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".game.GameHubActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".game.DeepRpgActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".game.ArcadeActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".social.MabarRaidActivity" android:screenOrientation="portrait" android:exported="false" />
 
         <!-- Service player musik: MediaSessionService dari media3, jalan sebagai
              foreground service tipe "mediaPlayback" biar lagu TETAP lanjut muter

@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object RemotePushManager {
     const val TOPIC = "bittv_live_updates"
+    const val GAME_TOPIC = "bittv_game_events"
+    const val MABAR_TOPIC = "bittv_mabar"
 
     private const val PREFS = "bittv_remote_push"
     private const val KEY_BASELINE_READY = "baseline_ready"
@@ -59,14 +61,29 @@ object RemotePushManager {
             .subscribeToTopic(TOPIC)
             .addOnCompleteListener { task ->
                 val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                if (task.isSuccessful) {
-                    prefs.edit().putBoolean(KEY_ENROLLED, true).apply()
-                    Log.d(TAG, "FCM topic subscribed: $TOPIC")
-                } else {
+                if (!task.isSuccessful) {
                     Log.e(TAG, "FCM topic subscribe failed: $TOPIC", task.exception)
                     prefs.edit().putBoolean(KEY_ENROLLED, false).apply()
+                    enrolling.set(false)
+                    return@addOnCompleteListener
                 }
-                enrolling.set(false)
+
+                FirebaseMessaging.getInstance()
+                    .subscribeToTopic(GAME_TOPIC)
+                    .addOnCompleteListener { gameTask ->
+                        FirebaseMessaging.getInstance().subscribeToTopic(MABAR_TOPIC).addOnCompleteListener { mabarTask ->
+                            if (gameTask.isSuccessful && mabarTask.isSuccessful) {
+                                prefs.edit().putBoolean(KEY_ENROLLED, true).apply()
+                                Log.d(TAG, "FCM topics subscribed: $TOPIC, $GAME_TOPIC, $MABAR_TOPIC")
+                            } else {
+                                // Keep LIVE/game enrollment recoverable even if one optional topic fails.
+                                prefs.edit().putBoolean(KEY_ENROLLED, gameTask.isSuccessful).apply()
+                                if (!gameTask.isSuccessful) Log.e(TAG, "FCM game topic subscribe failed: $GAME_TOPIC", gameTask.exception)
+                                if (!mabarTask.isSuccessful) Log.e(TAG, "FCM mabar topic subscribe failed: $MABAR_TOPIC", mabarTask.exception)
+                            }
+                            enrolling.set(false)
+                        }
+                    }
             }
     }
 

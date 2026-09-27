@@ -2,6 +2,7 @@ package com.bittv.iptv.service
 
 import android.util.Log
 import com.bittv.iptv.util.FreeNotification
+import com.bittv.iptv.util.GameNotification
 import com.bittv.iptv.util.RemotePushManager
 import com.bittv.iptv.worker.PlaylistUpdateWorker
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -43,22 +44,34 @@ class RemoteMessagingService : FirebaseMessagingService() {
             val enabled = data["notif_enabled"]?.equals("true", ignoreCase = true)
                 ?: (notificationPayload != null)
             RemotePushManager.noteRemoteAnnouncement(applicationContext)
-            FreeNotification.showFromPush(
-                context = applicationContext,
-                id = data["notif_id"].orEmpty(),
-                title = notifTitle.orEmpty(),
-                message = notifMessage.orEmpty(),
-                enabled = enabled,
-                suppliedFingerprint = data["notif_fingerprint"]
-            )
+            if (kind.equals("game", ignoreCase = true)) {
+                GameNotification.showFromPush(applicationContext, notifTitle.orEmpty(), notifMessage.orEmpty())
+            } else if (kind.equals("mabar", ignoreCase = true)) {
+                GameNotification.showMabar(applicationContext, notifTitle.orEmpty(), notifMessage.orEmpty())
+            } else if (kind.equals("quest", ignoreCase = true) || kind.equals("reward", ignoreCase = true)) {
+                GameNotification.showQuest(applicationContext, notifTitle.orEmpty(), notifMessage.orEmpty())
+            } else if (kind.equals("content", ignoreCase = true)) {
+                GameNotification.showContent(applicationContext, notifTitle.orEmpty(), notifMessage.orEmpty())
+            } else {
+                FreeNotification.showFromPush(
+                    context = applicationContext,
+                    id = data["notif_id"].orEmpty(),
+                    title = notifTitle.orEmpty(),
+                    message = notifMessage.orEmpty(),
+                    enabled = enabled,
+                    suppliedFingerprint = data["notif_fingerprint"]
+                )
+            }
         }
 
         // Playlist/sync messages use the existing worker pipeline for network
         // access. The worker publishes the new snapshot and broadcasts it to a
         // live MainActivity without requiring a manual refresh.
-        if (kind != "notification") {
-            PlaylistUpdateWorker.enqueueRealtime(applicationContext, kind)
-        }
+        // Only playlist/update kinds should wake the playlist pipeline. Game,
+        // reward, mabar and content notifications must not trigger a playlist
+        // network sync by accident.
+        val playlistKinds = setOf("playlist", "playlist_update", "resync", "sync", "channel_update")
+        if (kind in playlistKinds) PlaylistUpdateWorker.enqueueRealtime(applicationContext, kind)
     }
 
     override fun onDeletedMessages() {
