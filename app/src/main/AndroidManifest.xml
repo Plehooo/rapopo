@@ -8,6 +8,13 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Dibutuhkan agar EwsUpdateWorker bisa jalan sebagai expedited work di
+         Android 12 ke bawah (WorkManager mempromosikannya jadi foreground
+         service singkat kalau OS belum punya jalur expedited native). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Dipakai untuk minta pengecualian battery optimization khusus EWS,
+         supaya worker 15-menitan tidak dibunuh OEM battery saver agresif. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Buat fitur EWS (peringatan gempa/cuaca/gunung berapi terdekat) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

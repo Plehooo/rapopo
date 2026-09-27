@@ -61,7 +61,6 @@ import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.bittv.iptv.BuildConfig
 import com.bittv.iptv.R
 import com.bittv.iptv.config.AppConfig
 import com.bittv.iptv.config.ConfigStore
@@ -77,6 +76,7 @@ import com.bittv.iptv.util.HeaderParser
 import com.bittv.iptv.util.LogoLoader
 import com.bittv.iptv.util.MusicRepository
 import com.bittv.iptv.util.PlaylistNotification
+import com.bittv.iptv.util.PointsManager
 import com.bittv.iptv.util.FreeNotification
 import com.bittv.iptv.util.RemotePushManager
 import com.bittv.iptv.util.PlaylistRepository
@@ -84,7 +84,6 @@ import com.bittv.iptv.util.PlaylistUpdateResult
 import com.bittv.iptv.util.TebakGambarRepository
 import com.bittv.iptv.util.ThrottlingDataSource
 import com.bittv.iptv.util.ViewerPresenceManager
-import com.bittv.iptv.util.YoutubeRepository
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
 import com.bittv.iptv.worker.EwsUpdateWorker
@@ -1030,6 +1029,7 @@ class MainActivity : AppCompatActivity() {
     private fun openTebakGambar() {
         gameMenuContainer.visibility = View.GONE
         tebakGambarContainer.visibility = View.VISIBLE
+        gameScoreText.text = "Skor: $gameScore • Poin: ${PointsManager.getTotal(this)}"
 
         if (gameItems.isEmpty() && !gameLoading) {
             loadGameBankThenStart()
@@ -1145,7 +1145,16 @@ class MainActivity : AppCompatActivity() {
                 result.onSuccess { tracks ->
                     lastMusicTracks = tracks
                     musicAdapter.submitList(tracks)
-                    musicFeedbackText.text = "Ditemukan ${tracks.size} lagu. Tap buat muter."
+                    // Setiap pencarian yang berhasil dapat hasil juga kasih poin,
+                    // sama kayak jawaban benar di Tebak Gambar — satu currency
+                    // poin yang sama lintas fitur (PointsManager).
+                    if (tracks.isNotEmpty()) {
+                        val totalPoints = PointsManager.addPoints(this@MainActivity, 1)
+                        musicFeedbackText.text =
+                            "Ditemukan ${tracks.size} lagu. Tap buat muter. (+1 poin, total $totalPoints)"
+                    } else {
+                        musicFeedbackText.text = "Ditemukan ${tracks.size} lagu. Tap buat muter."
+                    }
                 }.onFailure {
                     musicFeedbackText.text = "Gagal: ${it.message ?: it.javaClass.simpleName}"
                 }
@@ -1310,7 +1319,8 @@ class MainActivity : AppCompatActivity() {
             gameCountdown?.cancel()
 
             gameScore += 1
-            gameScoreText.text = "Skor: $gameScore"
+            val totalPoints = PointsManager.addPoints(this, 1)
+            gameScoreText.text = "Skor: $gameScore • Poin: $totalPoints"
             gamePopIn(gameScoreText, fromScale = 1.35f)
 
             gameFeedbackText.setTextColor(resources.getColor(R.color.live_dot, theme))
@@ -1889,6 +1899,26 @@ class MainActivity : AppCompatActivity() {
             if (location != null) {
                 EwsUpdateWorker.enqueueNow(applicationContext)
             }
+        }
+        requestIgnoreBatteryOptimizationsForEws()
+    }
+
+    /** Sekali minta user whitelist app dari battery optimization, khusus biar
+     *  worker EWS gak dibunuh OEM battery saver (Xiaomi/Oppo/Vivo/Samsung dkk
+     *  terkenal agresif matiin background job walau constraint-nya udah
+     *  benar). Ini bagian dari EWS "full-in" tanpa fallback FCM: keandalannya
+     *  ditaruh di sini, bukan di jalur push terpisah. */
+    private fun requestIgnoreBatteryOptimizationsForEws() {
+        val prefs = getSharedPreferences("bittv_bmkg_ews", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("asked_battery_opt", false)) return
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        if (powerManager == null || powerManager.isIgnoringBatteryOptimizations(packageName)) return
+        prefs.edit().putBoolean("asked_battery_opt", true).apply()
+        runCatching {
+            val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = android.net.Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
         }
     }
 

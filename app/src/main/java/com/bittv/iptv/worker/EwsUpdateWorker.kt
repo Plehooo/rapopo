@@ -1,15 +1,22 @@
 package com.bittv.iptv.worker
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.bittv.iptv.R
 import com.bittv.iptv.config.ConfigStore
 import com.bittv.iptv.ews.EwsLocationManager
 import com.bittv.iptv.ews.EwsRepository
@@ -19,6 +26,35 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
+
+    // Wajib di-override untuk expedited work di Android 12 ke bawah (lihat
+    // setExpedited() di schedule/enqueueNow). Tanpa ini WorkManager bakal
+    // lempar IllegalStateException pas promosi ke foreground service.
+    // Notifikasi ini silent/low-importance, cuma numpang lewat sebentar.
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (manager.getNotificationChannel(FOREGROUND_CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    FOREGROUND_CHANNEL_ID,
+                    "Pemeriksaan EWS",
+                    NotificationManager.IMPORTANCE_MIN
+                ).apply { setShowBadge(false) }
+            )
+        }
+        val notification = NotificationCompat.Builder(applicationContext, FOREGROUND_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_app_logo)
+            .setContentTitle("Memeriksa peringatan dini")
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setOngoing(true)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification)
+        }
+    }
+
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
             val config = ConfigStore.load(applicationContext)
@@ -50,6 +86,8 @@ class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : Coroutine
         private const val PERIODIC_NAME = "live_tv_bmkg_ews_periodic"
         private const val NOW_NAME = "live_tv_bmkg_ews_now"
         private const val MAX_RETRY_COUNT = 3
+        private const val FOREGROUND_CHANNEL_ID = "ews_foreground_scan"
+        private const val FOREGROUND_NOTIFICATION_ID = 7402
         private const val ENQUEUE_PREFS = "bittv_bmkg_ews"
         private const val KEY_LAST_NOW_ENQUEUE = "last_now_enqueue"
         private const val NOW_ENQUEUE_COOLDOWN_MS = 60_000L
@@ -96,9 +134,14 @@ class EwsUpdateWorker(appContext: Context, params: WorkerParameters) : Coroutine
             // scan in the same minute. The periodic worker remains untouched.
             if (!prefs.edit().putLong(KEY_LAST_NOW_ENQUEUE, now).commit()) return
 
+            // Expedited: minta WorkManager jalanin ini secepat mungkin (bisa
+            // lewat foreground-service proxy internal OS kalau kuota expedited
+            // masih ada), bukan nunggu jendela Doze/App Standby biasa. Ini
+            // bagian dari bikin EWS "full-in" tanpa jalur FCM terpisah.
             val request = OneTimeWorkRequestBuilder<EwsUpdateWorker>()
                 .setConstraints(constraints)
                 .setInitialDelay(1L, TimeUnit.SECONDS)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 NOW_NAME,

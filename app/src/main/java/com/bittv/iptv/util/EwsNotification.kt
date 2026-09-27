@@ -70,9 +70,13 @@ object EwsNotification {
             return
         }
 
+        // Full-in: SEMUA hazard baru dikirim, tidak ada lagi yang dipotong
+        // diam-diam oleh batas jumlah baris. BigTextStyle akan discroll kalau
+        // panjang; itu lebih baik daripada ada bahaya yang tidak pernah
+        // ternotifikasi cuma karena kalah urutan di daftar.
         val unseen = active.filter { hazard ->
             seen[eventKey(hazard)] == null
-        }.take(MAX_LINES)
+        }
         if (unseen.isEmpty()) return
 
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -80,7 +84,7 @@ object EwsNotification {
         ) return
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
-        val selected = unseen.take(MAX_LINES)
+        val selected = unseen
         ensureChannel(context)
         val body = selected.joinToString("\n") { formatHazard(it) } +
             "\n\nSumber: BMKG / MAGMA-PVMBG. Periksa kanal resmi untuk arahan keselamatan terbaru."
@@ -184,7 +188,6 @@ object EwsNotification {
         return "${hazard.severity.label} • ${hazard.type.label} • ±${distance} km • ${detail.ifBlank { hazard.source }}"
     }
 
-    private const val MAX_LINES = 6
     private const val MAX_HISTORY = 200
     private const val HISTORY_MILLIS = 7L * 24L * 60L * 60L * 1000L
 }
