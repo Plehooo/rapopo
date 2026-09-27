@@ -15,10 +15,13 @@ Struktur data yang dipakai:
 ```text
 viewerPresence/
   <channel-key>/
-    <anonymous-uid>: <server-timestamp>
+    <anonymous-uid>:
+    lastSeen: <server-timestamp>
 ```
 
-Satu UID = satu koneksi aplikasi pada satu channel. `onDisconnect().removeValue()` dipasang sebelum session ditulis online, sehingga session dibersihkan oleh server saat koneksi putus. Firebase mendokumentasikan pola ini untuk presence. 
+Satu UID = satu koneksi aplikasi pada satu channel. `onDisconnect().removeValue()` tetap dipasang sebelum session ditulis online, tetapi client baru juga mengirim heartbeat 25 detik. UI hanya menghitung session dengan `lastSeen` maksimal 75 detik; jadi record lama/ghost tidak lagi membuat ikon mata muncul tanpa penonton.
+
+Record timestamp numerik dari APK lama tetap dibaca untuk kompatibilitas selama rules lama belum dibersihkan.
 
 ## Catatan
 

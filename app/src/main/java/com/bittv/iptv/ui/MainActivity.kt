@@ -24,6 +24,17 @@ import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.widget.AdapterView
+import android.app.AlertDialog
+import android.app.Dialog
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.text.InputFilter
+import android.text.InputType
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.ProgressBar
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -75,6 +86,8 @@ import com.bittv.iptv.util.EpgRepository
 import com.bittv.iptv.util.HeaderParser
 import com.bittv.iptv.util.LogoLoader
 import com.bittv.iptv.util.MusicRepository
+import com.bittv.iptv.util.MabarRepository
+import com.bittv.iptv.util.RpgGameStore
 import com.bittv.iptv.util.PlaylistNotification
 import com.bittv.iptv.util.FreeNotification
 import com.bittv.iptv.util.RemotePushManager
@@ -94,6 +107,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.roundToInt
 import java.util.concurrent.Executors
 
 @UnstableApi
@@ -103,6 +117,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var epgRepository: EpgRepository
     private lateinit var viewerPresence: ViewerPresenceManager
+    private lateinit var rpgStore: RpgGameStore
+    private lateinit var mabarRepository: MabarRepository
 
     private lateinit var groupSpinner: Spinner
     private lateinit var statusText: TextView
@@ -159,6 +175,14 @@ class MainActivity : AppCompatActivity() {
     private var gameCountdown: CountDownTimer? = null
     private var gameRemainingMs: Long = GAME_ROUND_MS
     private var gameLoading = false
+
+    // Game Hub profile + RPG/Mabar state. Kept separate from the existing TV/player
+    // state so a game failure can never take down playback.
+    private var playerName = ""
+    private var mabarDialog: Dialog? = null
+    private var currentMabarRoom: String? = null
+    private var mabarRewardedRooms = mutableSetOf<String>()
+    private lateinit var gameProfileSummary: TextView
 
     // --- Fitur Musik: search + putar lagu lewat MusicPlayerService, biar
     //     bisa lanjut muter di background kayak Spotify (beda dari video TV
@@ -280,6 +304,8 @@ class MainActivity : AppCompatActivity() {
         config = ConfigStore.load(this)
         playlistRepository = PlaylistRepository(this, config)
         epgRepository = EpgRepository(this)
+        rpgStore = RpgGameStore(this)
+        mabarRepository = MabarRepository(this)
 
         setContentView(R.layout.activity_main)
         bindViews()
@@ -319,6 +345,10 @@ class MainActivity : AppCompatActivity() {
         // sebelumnya fullscreen. Di sini status fullscreen dipulihkan lagi.
         if (savedInstanceState?.getBoolean(KEY_WAS_FULLSCREEN, false) == true) {
             mainHandler.post { enterFullscreen() }
+        }
+
+        mainHandler.post {
+            showProfileSetupIfNeeded()
         }
     }
 
@@ -454,6 +484,1090 @@ class MainActivity : AppCompatActivity() {
                 mediaController?.seekTo((seekBar?.progress ?: 0) * 1000L)
             }
         })
+        
+    // ================= Extended Game Hub =================
+
+    private fun buildExtendedGameHub() {
+        val scroll = gameMenuContainer as? ScrollView ?: return
+        val menu = scroll.getChildAt(0) as? LinearLayout ?: return
+        if (menu.findViewWithTag<View>("extended-rpg") != null) return
+
+        val profileCard = createGameCard(
+            tag = "extended-profile",
+            icon = "👤",
+            title = "Profil Pemain",
+            description = "Nama ini dipakai di RPG dan Mabar realtime"
+        ) {
+            showSettingsDialog()
+        }
+        gameProfileSummary = profileCard.findViewWithTag("card-description") as TextView
+        profileCard.setOnClickListener { showSettingsDialog() }
+
+        val rpgCard = createGameCard(
+            tag = "extended-rpg",
+            icon = "⚔️",
+            title = "BITTV RPG",
+            description = "Level up, monster, dungeon, loot, class dan quest"
+        ) { showRpgGameDialog() }
+
+        val mabarCard = createGameCard(
+            tag = "extended-mabar",
+            icon = "🛡️",
+            title = "Mabar Raid",
+            description = "Bikin/join room sampai 4 player, lawan boss bareng"
+        ) { showMabarDialog() }
+
+        val dailyCard = createGameCard(
+            tag = "extended-daily",
+            icon = "🎁",
+            title = "Daily Claim",
+            description = "Ambil XP, gold, dan potion sekali setiap hari"
+        ) { claimDailyFromHub() }
+
+        val settingsCard = createGameCard(
+            tag = "extended-settings",
+            icon = "⚙️",
+            title = "Settings",
+            description = "Nama, Hemat Data, reset progres RPG, dan info app"
+        ) { showSettingsDialog() }
+
+        val insertIndex = 3.coerceAtMost(menu.childCount)
+        menu.addView(profileCard, insertIndex)
+        menu.addView(rpgCard, (insertIndex + 1).coerceAtMost(menu.childCount))
+        menu.addView(mabarCard, (insertIndex + 2).coerceAtMost(menu.childCount))
+        menu.addView(dailyCard, (insertIndex + 3).coerceAtMost(menu.childCount))
+        menu.addView(settingsCard, (insertIndex + 4).coerceAtMost(menu.childCount))
+        updateGameHubProfileSummary()
+    }
+
+    private fun createGameCard(
+        tag: String,
+        icon: String,
+        title: String,
+        description: String,
+        action: () -> Unit
+    ): LinearLayout {
+        val card = LinearLayout(this).apply {
+            this.tag = tag
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 18f)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
+        }
+
+        val iconView = TextView(this).apply {
+            text = icon
+            textSize = 28f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+                rightMargin = dp(12)
+            }
+        }
+        card.addView(iconView)
+
+        val copy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        copy.addView(TextView(this).apply {
+            text = title
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        val desc = TextView(this).apply {
+            tag = "card-description"
+            text = description
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, dp(3), 0, 0)
+        }
+        copy.addView(desc)
+        card.addView(copy)
+        card.addView(TextView(this).apply {
+            text = "›"
+            textSize = 24f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.game_accent_light))
+            setPadding(dp(8), 0, 0, 0)
+        })
+        return card
+    }
+
+    private fun updateGameHubProfileSummary() {
+        if (!::gameProfileSummary.isInitialized) return
+        val state = rpgStore.load()
+        gameProfileSummary.text = "${playerName.ifBlank { "Player" }} • Lv.${state.level} • ${state.gold} gold"
+    }
+
+    private fun showProfileSetupIfNeeded() {
+        if (playerName.isNotBlank()) {
+            updateGameHubProfileSummary()
+            syncRpgProfile()
+            return
+        }
+
+        val input = EditText(this).apply {
+            hint = "Contoh: Adit"
+            singleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            filters = arrayOf(InputFilter.LengthFilter(24))
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+            setPadding(dp(14), 0, dp(14), 0)
+            background = roundedDrawable(R.color.bg_root_soft, R.color.surface_stroke, 1f, 14f)
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), 0, dp(4), dp(4))
+        }
+        container.addView(TextView(this).apply {
+            text = "Buat profil dulu"
+            textSize = 22f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        container.addView(TextView(this).apply {
+            text = "Nama ini tampil di Game Hub dan Mabar. Cukup sekali di perangkat ini."
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            setPadding(0, dp(6), 0, dp(16))
+        })
+        container.addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(container)
+            .setPositiveButton("Lanjut", null)
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(ColorDrawable(ContextCompat.getColor(this, R.color.bg_root)))
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(
+                ContextCompat.getColor(this, R.color.brand_blue_light)
+            )
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val clean = input.text.toString().trim().replace("\\s+".toRegex(), " ")
+                when {
+                    clean.length !in 2..24 -> input.error = "Nama 2–24 karakter"
+                    clean == "Player" -> input.error = "Pakai nama yang berbeda"
+                    else -> {
+                        playerName = clean
+                        prefs.edit().putString(KEY_PLAYER_NAME, playerName).apply()
+                        updateGameHubProfileSummary()
+                        syncRpgProfile()
+                        dialog.dismiss()
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun claimDailyFromHub() {
+        var state = rpgStore.load()
+        val claimed = rpgStore.claimDaily(state)
+        if (claimed == null) {
+            showGameToast("Daily sudah di-claim hari ini. Balik lagi besok.")
+            return
+        }
+        state = claimed
+        updateGameHubProfileSummary()
+        syncRpgProfile()
+        showGameToast("Daily masuk: +${RpgGameStore.DAILY_GOLD} gold, +${RpgGameStore.DAILY_XP} XP, +1 potion")
+    }
+
+    private fun showSettingsDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), 0, dp(4), 0)
+        }
+        val nameInput = EditText(this).apply {
+            setText(playerName)
+            hint = "Nama pemain"
+            singleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            filters = arrayOf(InputFilter.LengthFilter(24))
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+            background = roundedDrawable(R.color.bg_root_soft, R.color.surface_stroke, 1f, 14f)
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+        box.addView(TextView(this).apply {
+            text = "Nama pemain"
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+        })
+        box.addView(nameInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
+            topMargin = dp(6)
+            bottomMargin = dp(14)
+        })
+
+        val saverButton = Button(this).apply {
+            text = "Hemat Data: ${dataSaverValueText.text}"
+            isAllCaps = false
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 14f)
+            setOnClickListener {
+                showDataSaverMenuFor(this)
+                text = "Hemat Data: ${dataSaverValueText.text}"
+            }
+        }
+        box.addView(saverButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply {
+            bottomMargin = dp(10)
+        })
+
+        val resetButton = Button(this).apply {
+            text = "Reset progres RPG"
+            isAllCaps = false
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_light))
+            background = roundedDrawable(R.color.accent_soft, R.color.accent_dark, 1f, 14f)
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Reset progres?")
+                    .setMessage("Level, gold, potion, HP, stamina, dan statistik RPG akan kembali ke awal.")
+                    .setNegativeButton("Batal", null)
+                    .setPositiveButton("Reset") { _, _ ->
+                        rpgStore.reset()
+                        updateGameHubProfileSummary()
+                        syncRpgProfile()
+                        showGameToast("Progres RPG direset.")
+                    }
+                    .show()
+            }
+        }
+        box.addView(resetButton)
+
+        box.addView(TextView(this).apply {
+            text = "BITTV ${BuildConfig.VERSION_NAME}\nTV dan Game berjalan terpisah supaya playback tetap stabil."
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            setPadding(0, dp(14), 0, 0)
+        })
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("⚙️ Settings")
+            .setView(box)
+            .setNegativeButton("Tutup", null)
+            .setPositiveButton("Simpan", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(
+                ContextCompat.getColor(this, R.color.brand_blue_light)
+            )
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val clean = nameInput.text.toString().trim().replace("\\s+".toRegex(), " ")
+                if (clean.length !in 2..24) {
+                    nameInput.error = "Nama 2–24 karakter"
+                    return@setOnClickListener
+                }
+                playerName = clean
+                prefs.edit().putString(KEY_PLAYER_NAME, playerName).apply()
+                updateGameHubProfileSummary()
+                syncRpgProfile()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showRpgGameDialog() {
+        var state = rpgStore.load()
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.bg_root))
+            clipToPadding = false
+            setPadding(dp(12), dp(12), dp(12), dp(20))
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6), dp(6), dp(6), 0)
+        }
+        scroll.addView(panel)
+        dialog.setContentView(scroll)
+
+        val titleRow = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val title = TextView(this).apply {
+            text = "⚔️ BITTV RPG"
+            textSize = 22f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        titleRow.addView(title)
+        val close = Button(this).apply {
+            text = "Tutup"
+            isAllCaps = false
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 14f)
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        }
+        titleRow.addView(close, LinearLayout.LayoutParams(dp(80), dp(44)))
+        panel.addView(titleRow)
+
+        val profile = TextView(this).apply {
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            setPadding(dp(2), dp(5), dp(2), 0)
+        }
+        panel.addView(profile)
+
+        val statRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        val levelText = rpgStatChip(statRow, "LEVEL")
+        val goldText = rpgStatChip(statRow, "GOLD")
+        val staminaText = rpgStatChip(statRow, "ENERGY")
+        val hpText = rpgStatChip(statRow, "HP")
+        panel.addView(statRow)
+
+        val xpBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this@MainActivity, R.color.game_accent_light)
+            )
+            background = roundedDrawable(R.color.bg_root_soft, R.color.surface_stroke, 1f, 8f)
+        }
+        panel.addView(xpBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)).apply {
+            topMargin = dp(10)
+        })
+
+        val classButton = Button(this).apply {
+            isAllCaps = false
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.game_accent_dark, R.color.game_accent, 1f, 14f)
+        }
+        panel.addView(classButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+            topMargin = dp(10)
+        })
+
+        val enemyCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 18f)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+        val enemyNameText = TextView(this).apply {
+            textSize = 18f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        val enemyHpText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            setPadding(0, dp(3), 0, dp(8))
+        }
+        val enemyBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            progressTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this@MainActivity, R.color.accent)
+            )
+        }
+        enemyCard.addView(enemyNameText)
+        enemyCard.addView(enemyHpText)
+        enemyCard.addView(enemyBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)))
+        panel.addView(enemyCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(14)
+        })
+
+        var enemyName = "Tidak ada monster"
+        var enemyHp = 0
+        var enemyMaxHp = 0
+        var enemyIsBoss = false
+        val logText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            background = roundedDrawable(R.color.bg_root_soft, R.color.divider, 1f, 14f)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            text = "Pilih Jelajah untuk menemukan monster."
+        }
+        panel.addView(logText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(10)
+        })
+
+        val actionRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val attackButton = rpgActionButton("⚔️ Serang", R.color.game_accent)
+        val skillButton = rpgActionButton("✨ Skill", R.color.game_accent_dark)
+        actionRow1.addView(attackButton, weightParams())
+        actionRow1.addView(skillButton, weightParams(dp(8)))
+        panel.addView(actionRow1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
+            topMargin = dp(12)
+        })
+
+        val actionRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val exploreButton = rpgActionButton("🗺️ Jelajah", R.color.surface_elevated)
+        val dungeonButton = rpgActionButton("🏰 Dungeon", R.color.surface_elevated)
+        actionRow2.addView(exploreButton, weightParams())
+        actionRow2.addView(dungeonButton, weightParams(dp(8)))
+        panel.addView(actionRow2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
+            topMargin = dp(8)
+        })
+
+        val actionRow3 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val potionButton = rpgActionButton("🧪 Potion", R.color.brand_blue_dark)
+        val healButton = rpgActionButton("💚 Heal 50G", R.color.brand_blue_dark)
+        val questButton = rpgActionButton("📜 Quest", R.color.surface_elevated)
+        actionRow3.addView(potionButton, weightParams())
+        actionRow3.addView(healButton, weightParams(dp(6)))
+        actionRow3.addView(questButton, weightParams(dp(6)))
+        panel.addView(actionRow3, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
+            topMargin = dp(8)
+        })
+
+        val dailyButton = Button(this).apply {
+            isAllCaps = false
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.accent_soft, R.color.accent_dark, 1f, 14f)
+        }
+        panel.addView(dailyButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply {
+            topMargin = dp(10)
+        })
+
+        close.setOnClickListener { dialog.dismiss() }
+
+        fun refresh() {
+            state = rpgStore.normalize(state)
+            val xpNeed = rpgStore.xpToNext(state.level)
+            val classLabel = if (state.classId.isBlank()) "Belum pilih class" else
+                "${rpgStore.classEmoji(state.classId)} ${rpgStore.className(state.classId)}"
+            profile.text = "$playerName • $classLabel"
+            levelText.text = "Lv.${state.level}"
+            goldText.text = "${state.gold}G"
+            staminaText.text = "${state.stamina}/${state.maxStamina}"
+            hpText.text = "${state.hp}/${state.maxHp}"
+            xpBar.progress = ((state.xp * 100) / xpNeed.coerceAtLeast(1)).coerceIn(0, 100)
+            classButton.text = "Class: $classLabel • ${state.xp}/${xpNeed} XP"
+            enemyNameText.text = enemyName
+            enemyHpText.text = if (enemyHp > 0) "HP $enemyHp / $enemyMaxHp" else "Aman dulu"
+            enemyBar.max = enemyMaxHp.coerceAtLeast(1)
+            enemyBar.progress = enemyHp.coerceAtLeast(0)
+            dailyButton.text = if (state.dailyClaimDate == java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())) {
+                "✅ Daily sudah di-claim"
+            } else "🎁 Claim Daily • +100G +50XP +1 Potion"
+            val enabled = state.classId.isNotBlank()
+            attackButton.isEnabled = enabled && enemyHp > 0
+            skillButton.isEnabled = enabled && enemyHp > 0
+            exploreButton.isEnabled = enabled
+            dungeonButton.isEnabled = enabled
+            potionButton.isEnabled = enabled && state.potions > 0 && state.hp < state.maxHp
+            healButton.isEnabled = enabled && state.hp < state.maxHp && state.gold >= 50
+            attackButton.alpha = if (attackButton.isEnabled) 1f else 0.5f
+            skillButton.alpha = if (skillButton.isEnabled) 1f else 0.5f
+            exploreButton.alpha = if (exploreButton.isEnabled) 1f else 0.5f
+            dungeonButton.alpha = if (dungeonButton.isEnabled) 1f else 0.5f
+            potionButton.alpha = if (potionButton.isEnabled) 1f else 0.5f
+            healButton.alpha = if (healButton.isEnabled) 1f else 0.5f
+            updateGameHubProfileSummary()
+        }
+
+        fun chooseClass() {
+            val labels = arrayOf(
+                "⚔️ Warrior — HP tebal, damage stabil",
+                "🧙 Mage — skill paling sakit, energi lebih boros",
+                "🏹 Ranger — peluang critical lebih tinggi"
+            )
+            val ids = arrayOf(RpgGameStore.CLASS_WARRIOR, RpgGameStore.CLASS_MAGE, RpgGameStore.CLASS_RANGER)
+            AlertDialog.Builder(this)
+                .setTitle("Pilih class")
+                .setItems(labels) { _, which ->
+                    state = rpgStore.setClass(state, ids[which])
+                    logText.text = "Class ${rpgStore.className(ids[which])} dipilih. Gas jelajah."
+                    syncRpgProfile(state)
+                    refresh()
+                }
+                .show()
+        }
+
+        fun ensureEnemy(boss: Boolean) {
+            if (enemyHp > 0) return
+            enemyIsBoss = boss
+            enemyName = if (boss) "👑 Abyss Warden" else listOf("👹 Goblin", "🐺 Dire Wolf", "🧟 Shadow Ghoul", "🐉 Mini Dragon").random()
+            enemyMaxHp = if (boss) 240 + state.level * 45 else 65 + state.level * 18 + (0..25).random()
+            enemyHp = enemyMaxHp
+            logText.text = if (boss) "Dungeon boss muncul! Hajar bareng di solo mode." else "$enemyName muncul di depanmu."
+            refresh()
+        }
+
+        fun playerDamage(skill: Boolean): Int {
+            val base = when (state.classId) {
+                RpgGameStore.CLASS_MAGE -> if (skill) 48 else 22
+                RpgGameStore.CLASS_RANGER -> if (skill) 42 else 24
+                else -> if (skill) 40 else 28
+            }
+            val scale = state.level * 4
+            val crit = state.classId == RpgGameStore.CLASS_RANGER && (0..99).random() < 28
+            return ((base + scale) * if (crit) 2 else 1) + (0..10).random()
+        }
+
+        fun performAttack(skill: Boolean) {
+            if (enemyHp <= 0) {
+                logText.text = "Nggak ada target. Jelajah atau masuk Dungeon dulu."
+                return
+            }
+            val cost = if (skill) 2 else 1
+            val nextState = rpgStore.spendStamina(state, cost)
+            if (nextState == null) {
+                logText.text = "Stamina habis. Ambil waktu atau pakai Jelajah dengan sisa energi."
+                return
+            }
+            state = nextState
+            val damage = playerDamage(skill)
+            enemyHp = (enemyHp - damage).coerceAtLeast(0)
+            val actionName = if (skill) "Skill" else "Serang"
+            if (enemyHp <= 0) {
+                val xpGain = if (enemyIsBoss) 120 else 30 + state.level * 3
+                val goldGain = if (enemyIsBoss) 180 else 35 + state.level * 5
+                val beforeLevel = state.level
+                state = rpgStore.addRewards(state, xpGain, goldGain)
+                state = rpgStore.markWin(state)
+                if ((0..99).random() < 24) state = rpgStore.save(state.copy(potions = state.potions + 1))
+                logText.text = "$actionName kena $damage. $enemyName tumbang • +$xpGain XP • +$goldGainG${if (state.level > beforeLevel) " • LEVEL UP!" else ""}"
+                enemyName = "Tidak ada monster"
+                enemyHp = 0
+                enemyMaxHp = 0
+                enemyIsBoss = false
+            } else {
+                val incoming = (5..(11 + state.level.coerceAtMost(15))).random()
+                state = rpgStore.save(state.copy(hp = (state.hp - incoming).coerceAtLeast(1)))
+                logText.text = "$actionName menghasilkan $damage damage. Musuh balas $incoming damage."
+            }
+            syncRpgProfile(state)
+            refresh()
+        }
+
+        attackButton.setOnClickListener { performAttack(false) }
+        skillButton.setOnClickListener { performAttack(true) }
+        exploreButton.setOnClickListener {
+            val spent = rpgStore.spendStamina(state, 1)
+            if (spent == null) {
+                logText.text = "Stamina habis. Gunakan Heal atau tunggu regenerasi saat kamu buka app lagi."
+                return@setOnClickListener
+            }
+            state = rpgStore.markExplore(spent)
+            when ((0..99).random()) {
+                in 0..56 -> ensureEnemy(false)
+                in 57..82 -> {
+                    val gold = (15..60).random() + state.level * 3
+                    val xp = (10..25).random()
+                    state = rpgStore.addRewards(state, xp, gold)
+                    logText.text = "Jelajah aman. Kamu menemukan $gold gold dan $xp XP."
+                    syncRpgProfile(state)
+                    refresh()
+                }
+                else -> {
+                    state = rpgStore.save(state.copy(potions = state.potions + 1))
+                    logText.text = "Kamu menemukan potion langka. +1 potion."
+                    syncRpgProfile(state)
+                    refresh()
+                }
+            }
+        }
+        dungeonButton.setOnClickListener {
+            val spent = rpgStore.spendStamina(state, 3)
+            if (spent == null) {
+                logText.text = "Dungeon butuh 3 energy."
+                return@setOnClickListener
+            }
+            state = spent
+            ensureEnemy(true)
+        }
+        potionButton.setOnClickListener {
+            val healed = rpgStore.usePotion(state)
+            if (healed == null) return@setOnClickListener
+            state = healed
+            logText.text = "Potion dipakai. HP pulih."
+            syncRpgProfile(state)
+            refresh()
+        }
+        healButton.setOnClickListener {
+            val healed = rpgStore.fullHeal(state)
+            if (healed == null) return@setOnClickListener
+            state = healed
+            logText.text = "Healer bekerja. HP penuh. -50G"
+            syncRpgProfile(state)
+            refresh()
+        }
+        questButton.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("📜 Quest")
+                .setMessage(
+                    "Pemburu Pemula\nMenang 3 monster → progres ${state.wins}/3\n\n" +
+                        "Penjelajah\nJelajah 5 kali → progres ${state.explores}/5\n\n" +
+                        "Dungeon\nMasuk dungeon dan kalahkan boss untuk loot besar.\n\n" +
+                        "Quest dan reward berkembang dari progres RPG kamu."
+                )
+                .setPositiveButton("Oke", null)
+                .show()
+        }
+        classButton.setOnClickListener { chooseClass() }
+        dailyButton.setOnClickListener {
+            val claimed = rpgStore.claimDaily(state)
+            if (claimed == null) {
+                logText.text = "Daily sudah kamu ambil hari ini."
+            } else {
+                state = claimed
+                logText.text = "Daily claim sukses: +100G +50XP +1 potion."
+                syncRpgProfile(state)
+            }
+            refresh()
+        }
+
+        if (state.classId.isBlank()) {
+            chooseClass()
+        }
+        // Gentle stamina regeneration while this screen is open.
+        val regenHandler = Handler(Looper.getMainLooper())
+        val regenRunnable = object : Runnable {
+            override fun run() {
+                if (!dialog.isShowing) return
+                val before = state.stamina
+                state = rpgStore.regenerateTick(state)
+                if (state.stamina != before) refresh()
+                regenHandler.postDelayed(this, 15_000L)
+            }
+        }
+        dialog.setOnDismissListener { regenHandler.removeCallbacksAndMessages(null) }
+        refresh()
+
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            dialog.window?.setDimAmount(0.78f)
+            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            dialog.window?.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            regenHandler.postDelayed(regenRunnable, 15_000L)
+        }
+        dialog.show()
+    }
+
+    private fun rpgStatChip(parent: LinearLayout, initial: String): TextView {
+        val chip = TextView(this).apply {
+            text = initial
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 12f)
+            setPadding(dp(4), dp(7), dp(4), dp(7))
+        }
+        parent.addView(chip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            rightMargin = dp(5)
+        })
+        return chip
+    }
+
+    private fun rpgActionButton(text: String, colorRes: Int): Button = Button(this).apply {
+        this.text = text
+        isAllCaps = false
+        textSize = 12f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        background = roundedDrawable(colorRes, R.color.surface_stroke, 1f, 14f)
+        minHeight = 0
+        minimumHeight = 0
+        stateListAnimator = null
+    }
+
+    private fun weightParams(marginStart: Int = 0): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+            if (marginStart > 0) leftMargin = marginStart
+        }
+
+    private fun showMabarDialog() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.bg_root))
+            setPadding(dp(12), dp(12), dp(12), dp(20))
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6), dp(6), dp(6), 0)
+        }
+        scroll.addView(panel)
+        dialog.setContentView(scroll)
+
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val heading = TextView(this).apply {
+            text = "🛡️ MABAR RAID"
+            textSize = 21f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val close = Button(this).apply {
+            text = "Tutup"
+            isAllCaps = false
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 14f)
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        }
+        header.addView(heading)
+        header.addView(close, LinearLayout.LayoutParams(dp(80), dp(44)))
+        panel.addView(header)
+        panel.addView(TextView(this).apply {
+            text = "$playerName • 4 slot • realtime Firebase"
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            setPadding(dp(2), dp(4), 0, dp(12))
+        })
+
+        val roomChooser = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val roomInput = EditText(this).apply {
+            hint = "Kode room 6 karakter"
+            singleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT
+            filters = arrayOf(InputFilter.LengthFilter(6))
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 14f)
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+        val createRoom = Button(this).apply {
+            text = "🏰 Buat Room"
+            isAllCaps = false
+            background = roundedDrawable(R.color.game_accent_dark, R.color.game_accent, 1f, 14f)
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        }
+        val joinRoom = Button(this).apply {
+            text = "🔗 Gabung Room"
+            isAllCaps = false
+            background = roundedDrawable(R.color.surface_elevated, R.color.surface_stroke, 1f, 14f)
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        }
+        roomChooser.addView(roomInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
+        roomChooser.addView(createRoom, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(8) })
+        roomChooser.addView(joinRoom, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(8) })
+        panel.addView(roomChooser)
+
+        val roomCode = TextView(this).apply {
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.brand_blue_light))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = roundedDrawable(R.color.brand_blue_soft, R.color.brand_blue_dark, 1f, 16f)
+            setPadding(0, dp(12), 0, dp(12))
+            visibility = View.GONE
+        }
+        panel.addView(roomCode, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(10) })
+
+        val playerListText = TextView(this).apply {
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 16f)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            visibility = View.GONE
+        }
+        panel.addView(playerListText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+
+        val readyButton = Button(this).apply {
+            text = "✅ Ready"
+            isAllCaps = false
+            visibility = View.GONE
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.game_accent_dark, R.color.game_accent, 1f, 14f)
+        }
+        val startButton = Button(this).apply {
+            text = "🚀 Mulai Raid (Host)"
+            isAllCaps = false
+            visibility = View.GONE
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.accent_dark, R.color.accent, 1f, 14f)
+        }
+        panel.addView(readyButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(10) })
+        panel.addView(startButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(8) })
+
+        val bossName = TextView(this).apply {
+            text = "👑 Abyss Warden"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            visibility = View.GONE
+            setPadding(dp(2), dp(14), 0, dp(4))
+        }
+        val bossHp = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = MabarRepository.BOSS_HP
+            progress = MabarRepository.BOSS_HP
+            progressTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this@MainActivity, R.color.accent)
+            )
+            visibility = View.GONE
+        }
+        val bossHpText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            visibility = View.GONE
+        }
+        panel.addView(bossName)
+        panel.addView(bossHp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)))
+        panel.addView(bossHpText)
+
+        val raidRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val raidAttack = rpgActionButton("⚔️ Hit Boss", R.color.game_accent)
+        val raidSkill = rpgActionButton("✨ Power Hit", R.color.game_accent_dark)
+        raidRow.addView(raidAttack, weightParams())
+        raidRow.addView(raidSkill, weightParams(dp(8)))
+        panel.addView(raidRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
+            topMargin = dp(10)
+        })
+        raidAttack.visibility = View.GONE
+        raidSkill.visibility = View.GONE
+
+        val chatText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            background = roundedDrawable(R.color.bg_root_soft, R.color.divider, 1f, 14f)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minLines = 4
+            visibility = View.GONE
+        }
+        val chatRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val chatInput = EditText(this).apply {
+            hint = "Chat room..."
+            singleLine = true
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+            background = roundedDrawable(R.color.surface, R.color.surface_stroke, 1f, 14f)
+            setPadding(dp(12), 0, dp(12), 0)
+        }
+        val chatSend = Button(this).apply {
+            text = "Kirim"
+            isAllCaps = false
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            background = roundedDrawable(R.color.brand_blue_dark, R.color.brand_blue, 1f, 14f)
+        }
+        chatRow.addView(chatInput, LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(8) })
+        chatRow.addView(chatSend, LinearLayout.LayoutParams(dp(76), dp(50)))
+        chatRow.visibility = View.GONE
+        panel.addView(chatText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        panel.addView(chatRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(8) })
+
+        val leaveButton = Button(this).apply {
+            text = "Keluar Room"
+            isAllCaps = false
+            visibility = View.GONE
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_light))
+            background = roundedDrawable(R.color.accent_soft, R.color.accent_dark, 1f, 14f)
+        }
+        panel.addView(leaveButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(10) })
+
+        val realDialog = dialog
+        mabarDialog = realDialog
+        realDialog.setContentView(scroll)
+
+        fun showRoomUi(show: Boolean) {
+            roomChooser.visibility = if (show) View.VISIBLE else View.GONE
+            roomCode.visibility = if (show) View.GONE else View.VISIBLE
+            playerListText.visibility = if (show) View.GONE else View.VISIBLE
+            readyButton.visibility = if (show) View.GONE else View.VISIBLE
+            startButton.visibility = if (show) View.GONE else View.VISIBLE
+            bossName.visibility = if (show) View.GONE else View.VISIBLE
+            bossHp.visibility = if (show) View.GONE else View.VISIBLE
+            bossHpText.visibility = if (show) View.GONE else View.VISIBLE
+            raidAttack.visibility = if (show) View.GONE else View.VISIBLE
+            raidSkill.visibility = if (show) View.GONE else View.VISIBLE
+            chatText.visibility = if (show) View.GONE else View.VISIBLE
+            chatRow.visibility = if (show) View.GONE else View.VISIBLE
+            leaveButton.visibility = if (show) View.GONE else View.VISIBLE
+        }
+
+        var currentReady = false
+
+        fun syncStateAndRoom() {
+            syncRpgProfile()
+        }
+
+        fun leaveCurrentRoom() {
+            currentMabarRoom?.let { mabarRepository.leaveRoom(it) }
+            currentMabarRoom = null
+            mabarRepository.stopObserving()
+        }
+
+        fun renderRoom(room: MabarRepository.RoomSnapshot) {
+            if (!realDialog.isShowing) return
+            showRoomUi(false)
+            roomCode.text = "ROOM ${room.code}"
+            val me = mabarRepository.currentUid()
+            val lines = room.players.mapIndexed { i, player ->
+                val marker = if (player.uid == room.hostUid) "👑" else "•"
+                val ready = if (player.ready) " READY" else ""
+                "${i + 1}. $marker ${player.name} • Lv.${player.level}$ready"
+            }
+            playerListText.text = if (lines.isEmpty()) "Menunggu pemain..." else lines.joinToString("\n")
+            val readySelf = room.players.firstOrNull { it.uid == me }?.ready == true
+            currentReady = readySelf
+            readyButton.text = if (readySelf) "🟢 Ready ON — tap untuk batal" else "✅ Ready"
+            val readyCount = room.players.count { it.ready }
+            startButton.isEnabled = room.hostUid == me && readyCount >= 2 && room.status == "lobby"
+            startButton.alpha = if (startButton.isEnabled) 1f else 0.5f
+            startButton.text = if (room.hostUid == me) "🚀 Mulai Raid • $readyCount/${room.players.size} ready" else "Menunggu Host memulai..."
+            val raidVisible = room.status == "raid" || room.status == "ended"
+            bossName.visibility = if (raidVisible) View.VISIBLE else View.GONE
+            bossHp.visibility = if (raidVisible) View.VISIBLE else View.GONE
+            bossHpText.visibility = if (raidVisible) View.VISIBLE else View.GONE
+            raidAttack.visibility = if (raidVisible) View.VISIBLE else View.GONE
+            raidSkill.visibility = if (raidVisible) View.VISIBLE else View.GONE
+            bossHp.max = room.bossMaxHp.coerceAtLeast(1)
+            bossHp.progress = room.bossHp.coerceAtLeast(0)
+            bossHpText.text = "Boss HP ${room.bossHp}/${room.bossMaxHp}"
+            if (room.status == "ended") {
+                bossName.text = "🏆 RAID SELESAI"
+                raidAttack.isEnabled = false
+                raidSkill.isEnabled = false
+                if (mabarRewardedRooms.add(room.code)) {
+                    val old = rpgStore.load()
+                    val reward = rpgStore.addRewards(old, 90, 140)
+                    rpgStore.markWin(reward)
+                    syncStateAndRoom()
+                    showGameToast("Raid clear! +140G +90XP")
+                }
+            } else {
+                bossName.text = "👑 Abyss Warden"
+                raidAttack.isEnabled = room.status == "raid"
+                raidSkill.isEnabled = room.status == "raid"
+            }
+            raidAttack.alpha = if (raidAttack.isEnabled) 1f else 0.5f
+            raidSkill.alpha = if (raidSkill.isEnabled) 1f else 0.5f
+            chatText.text = room.messages.takeLast(18).joinToString("\n").ifBlank { "Chat masih kosong." }
+        }
+
+        fun openRoom(code: String) {
+            currentMabarRoom = code
+            mabarRepository.observeRoom(code,
+                onUpdate = { room -> renderRoom(room) },
+                onError = { error ->
+                    showGameToast(error)
+                    leaveCurrentRoom()
+                    showRoomUi(true)
+                }
+            )
+        }
+
+        createRoom.setOnClickListener {
+            createRoom.isEnabled = false
+            mabarRepository.createRoom(playerName, rpgStore.load()) { code, error ->
+                createRoom.isEnabled = true
+                if (code == null) {
+                    showGameToast(error ?: "Gagal membuat room")
+                    return@createRoom
+                }
+                roomInput.setText(code)
+                openRoom(code)
+            }
+        }
+        joinRoom.setOnClickListener {
+            val code = roomInput.text.toString().trim()
+            joinRoom.isEnabled = false
+            mabarRepository.joinRoom(code, playerName, rpgStore.load()) { joined, error ->
+                joinRoom.isEnabled = true
+                if (joined == null) {
+                    showGameToast(error ?: "Gagal join")
+                    return@joinRoom
+                }
+                openRoom(joined)
+            }
+        }
+        readyButton.setOnClickListener {
+            currentMabarRoom?.let { code ->
+                mabarRepository.setReady(code, !currentReady)
+            }
+        }
+        startButton.setOnClickListener { currentMabarRoom?.let(mabarRepository::startRaid) }
+        raidAttack.setOnClickListener {
+            val state = rpgStore.load()
+            val spent = rpgStore.spendStamina(state, 1) ?: run {
+                showGameToast("Energy RPG habis.")
+                return@setOnClickListener
+            }
+            val damage = 22 + spent.level * 4 + (0..12).random()
+            rpgStore.save(spent)
+            currentMabarRoom?.let { code ->
+                mabarRepository.attackBoss(code, damage) { ok, _ ->
+                    if (!ok) showGameToast("Serangan gagal, coba lagi.") else syncStateAndRoom()
+                }
+            }
+        }
+        raidSkill.setOnClickListener {
+            val state = rpgStore.load()
+            val spent = rpgStore.spendStamina(state, 2) ?: run {
+                showGameToast("Butuh 2 energy untuk Power Hit.")
+                return@setOnClickListener
+            }
+            val damage = 45 + spent.level * 6 + (0..18).random()
+            rpgStore.save(spent)
+            currentMabarRoom?.let { code ->
+                mabarRepository.attackBoss(code, damage) { ok, _ ->
+                    if (!ok) showGameToast("Power Hit gagal, coba lagi.") else syncStateAndRoom()
+                }
+            }
+        }
+        chatSend.setOnClickListener {
+            currentMabarRoom?.let { code ->
+                mabarRepository.sendMessage(code, playerName, chatInput.text.toString())
+                chatInput.setText("")
+            }
+        }
+        chatInput.setOnEditorActionListener { _, actionId, event ->
+            val send = actionId == EditorInfo.IME_ACTION_SEND ||
+                (event != null && event.keyCode == KeyEvent.KEYCODE_ENTER)
+            if (send) chatSend.performClick()
+            send
+        }
+        leaveButton.setOnClickListener {
+            leaveCurrentRoom()
+            showRoomUi(true)
+        }
+        close.setOnClickListener {
+            leaveCurrentRoom()
+            realDialog.dismiss()
+        }
+        realDialog.setOnDismissListener {
+            leaveCurrentRoom()
+            mabarDialog = null
+        }
+
+        showRoomUi(true)
+        realDialog.setOnShowListener {
+            realDialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            realDialog.window?.setDimAmount(0.82f)
+            realDialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            realDialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        realDialog.show()
+    }
+
+    private fun syncRpgProfile(state: RpgGameStore.State = rpgStore.load()) {
+        if (playerName.isNotBlank() && ::mabarRepository.isInitialized) {
+            mabarRepository.syncProfile(playerName, state)
+        }
+    }
+
+    private fun roundedDrawable(
+        fillRes: Int,
+        strokeRes: Int,
+        strokeWidth: Float,
+        radiusDp: Float
+    ): GradientDrawable = GradientDrawable().apply {
+        setColor(ContextCompat.getColor(this@MainActivity, fillRes))
+        setStroke(dp(strokeWidth.toInt().coerceAtLeast(1)), ContextCompat.getColor(this@MainActivity, strokeRes))
+        cornerRadius = dp(radiusDp.toInt()).toFloat()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
+    private fun showGameToast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+buildExtendedGameHub()
     }
 
     /**
@@ -1713,6 +2827,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreState() {
+        playerName = prefs.getString(KEY_PLAYER_NAME, "").orEmpty().trim()
         prefs.getStringSet(KEY_FAVORITES, emptySet())?.forEach(favorites::add)
         prefs.getString(KEY_HISTORY, null)
             ?.lineSequence()
@@ -1738,7 +2853,11 @@ class MainActivity : AppCompatActivity() {
 
     /** Tampilkan menu pilihan level batas bitrate, dari "Nonaktif" sampe yang paling kecil (Kbps). */
     private fun showDataSaverMenu() {
-        val popup = android.widget.PopupMenu(this, dataSaverValueText)
+        showDataSaverMenuFor(dataSaverValueText)
+    }
+
+    private fun showDataSaverMenuFor(anchor: View) {
+        val popup = android.widget.PopupMenu(this, anchor)
         DATA_SAVER_LEVELS.forEachIndexed { index, level ->
             popup.menu.add(0, index, index, level.label)
         }
@@ -2159,6 +3278,7 @@ class MainActivity : AppCompatActivity() {
         private const val NOTIFICATION_PERMISSION_REQUEST = 4001
         private const val LOCATION_PERMISSION_REQUEST = 4002
         private const val KEY_LAST_CHANNEL = "last_channel"
+        private const val KEY_PLAYER_NAME = "player_name"
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_WAS_FULLSCREEN = "was_fullscreen"

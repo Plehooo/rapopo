@@ -5,6 +5,51 @@
       "$channelId": {
         "$uid": {
           ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isNumber() || (newData.hasChildren(['lastSeen']) && newData.child('lastSeen').isNumber())"
+        }
+      }
+    },
+    "gameProfiles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['name', 'level']) && newData.child('name').isString() && newData.child('name').val().length <= 24 && newData.child('level').isNumber()"
+      }
+    },
+    "mabarRooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || (data.exists() && data.child('hostUid').val() === auth.uid))",
+        "players": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('mabarRooms').child($roomId).child('hostUid').val() === auth.uid)",
+            ".validate": "newData.hasChildren(['name', 'level', 'ready']) && newData.child('name').isString() && newData.child('name').val().length <= 24 && newData.child('level').isNumber() && newData.child('ready').isBoolean()"
+          }
+        },
+        "status": {
+          ".write": "auth != null && root.child('mabarRooms').child($roomId).child('players').child(auth.uid).exists()"
+        },
+        "bossHp": {
+          ".write": "auth != null && root.child('mabarRooms').child($roomId).child('players').child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1200 && (!data.exists() || newData.val() <= data.val())"
+        },
+        "bossMaxHp": {
+          ".write": "auth != null && root.child('mabarRooms').child($roomId).child('hostUid').val() === auth.uid",
+          ".validate": "newData.isNumber() && newData.val() === 1200"
+        },
+        "messages": {
+          "$messageId": {
+            ".write": "auth != null && newData.child('uid').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 160 && newData.child('name').isString() && newData.child('name').val().length <= 24",
+            ".validate": "newData.hasChildren(['uid', 'name', 'text'])"
+          }
+        },
+        "logs": {
+          "$logId": {
+            ".write": "auth != null && root.child('mabarRooms').child($roomId).child('players').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['uid', 'damage']) && newData.child('uid').val() === auth.uid && newData.child('damage').isNumber() && newData.child('damage').val() >= 1 && newData.child('damage').val() <= 250"
+          }
+        },
+        "createdAt": {
           ".validate": "newData.isNumber()"
         }
       }
