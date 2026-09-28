@@ -588,7 +588,7 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         val desc = TextView(this).apply {
-            tag = "card-description"
+            this.tag = "card-description"
             text = description
             textSize = 12f
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
