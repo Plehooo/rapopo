@@ -1,1 +1,0 @@
-iwak tempek
