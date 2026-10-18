@@ -83,6 +83,7 @@ import com.bittv.iptv.util.PlaylistRepository
 import com.bittv.iptv.util.PlaylistUpdateResult
 import com.bittv.iptv.util.TebakGambarRepository
 import com.bittv.iptv.util.ThrottlingDataSource
+import com.bittv.iptv.util.PlayerTuning
 import com.bittv.iptv.util.ViewerPresenceManager
 import com.bittv.iptv.worker.AppUpdateWorker
 import com.bittv.iptv.worker.EpgUpdateWorker
@@ -219,6 +220,7 @@ class MainActivity : AppCompatActivity() {
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     private var player: ExoPlayer? = null
+    private val stallWatchdog by lazy { PlayerTuning.StallWatchdog(mainHandler) }
     private var trackSelector: DefaultTrackSelector? = null
     private var dataSaverMaxBitrateBps: Int = 0
     private lateinit var dataSaverRow: android.view.View
@@ -1486,6 +1488,7 @@ class MainActivity : AppCompatActivity() {
             if (dataSaverMaxBitrateBps > 0) (dataSaverMaxBitrateBps / 8).toLong() else 0L
         }
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+            .setLoadErrorHandlingPolicy(PlayerTuning.loadErrorPolicy())
 
         // BUG FIX: channel yang butuh proteksi ClearKey (ditandai lewat
         // "#KODIPROP:" di M3U, lihat M3uParser) dulu diam-diam diabaikan
@@ -1508,7 +1511,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(3_000, 15_000, 500, 1_500)
+            .setBufferDurationsMs(12_000, 30_000, 1_000, 3_000)
+            .setBackBuffer(5_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -1522,17 +1526,19 @@ class MainActivity : AppCompatActivity() {
         // biar bisa di-ganti levelnya langsung tanpa perlu ganti channel dulu.
         val newTrackSelector = DefaultTrackSelector(this)
         val paramsBuilder = newTrackSelector.buildUponParameters()
+        PlayerTuning.tune(paramsBuilder)
         if (dataSaverMaxBitrateBps > 0) {
             paramsBuilder.setMaxVideoBitrate(dataSaverMaxBitrateBps)
         }
         newTrackSelector.setParameters(paramsBuilder)
         trackSelector = newTrackSelector
 
-        return ExoPlayer.Builder(this)
+        return ExoPlayer.Builder(this, PlayerTuning.renderersFactory(this))
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setTrackSelector(newTrackSelector)
             .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .also { it.volume = 1f }
     }
@@ -1540,6 +1546,8 @@ class MainActivity : AppCompatActivity() {
     private fun attachPlayerListener(currentPlayer: ExoPlayer) {
         currentPlayer.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                stallWatchdog.disarm()
+                if (PlayerTuning.recoverLiveWindow(currentPlayer, error)) return
                 if (isFullscreen) {
                     fullscreenRetryButton.visibility = View.VISIBLE
                 } else {
@@ -1577,11 +1585,20 @@ class MainActivity : AppCompatActivity() {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
                     Player.STATE_BUFFERING -> {
+                        val armedToken = playbackToken
+                        stallWatchdog.arm {
+                            if (!isFinishing && !isDestroyed && currentPlayer === player &&
+                                armedToken == playbackToken && automaticRetries < 3) {
+                                automaticRetries++
+                                activeChannel?.let { playChannel(it, isRetry = true, saveAsLast = false) }
+                            }
+                        }
                         activeChannel?.let {
                             statusText.text = "LIVE TV • Menghubungkan ${it.name}"
                         }
                     }
                     Player.STATE_READY -> {
+                        stallWatchdog.disarm()
                         automaticRetries = 0
                         retryButton.visibility = View.GONE
                         fullscreenRetryButton.visibility = View.GONE
