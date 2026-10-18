@@ -1,0 +1,126 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.bittv.iptv'
+    compileSdk 35
+    ndkVersion '26.3.11579264'
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        applicationId 'com.bittv.iptv'
+        minSdk 23
+        targetSdk 35
+        versionCode 30
+        versionName '3.0.0'
+
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++17'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+
+    signingConfigs {
+        debug {
+            storeFile file('keystore/bittv-debug.keystore')
+            storePassword 'android123'
+            keyAlias 'bittvdebug'
+            keyPassword 'android123'
+        }
+
+        // BUG FIX (keamanan): sebelumnya cuma ada signingConfig "debug" yang
+        // keystore + passwordnya ke-commit polos ke repo PUBLIC — siapa aja
+        // bisa ambil dan pakai buat nge-sign APK palsu yang ngaku dari app
+        // yang sama. Signing config "release" di bawah ini SENGAJA baca
+        // keystore & password dari environment variable saat build (diisi
+        // dari GitHub Secrets), bukan dari file/teks yang ke-commit. Kalau
+        // env var-nya gak ada (misal lagi build lokal biasa tanpa niat
+        // rilis), signing config ini otomatis gak aktif dan gradle fallback
+        // ke APK unsigned/pakai debug key seperti biasa — gak bikin build
+        // lokal error.
+        release {
+            def ksPath = System.getenv("RELEASE_KEYSTORE_PATH")
+            if (ksPath != null) {
+                storeFile file(ksPath)
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+        release {
+            // Cuma pakai signingConfig kalau env var-nya beneran ke-set
+            // (lihat catatan di signingConfigs.release di atas).
+            if (System.getenv("RELEASE_KEYSTORE_PATH") != null) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    packaging {
+        resources {
+            excludes += ['/META-INF/{AL2.0,LGPL2.1}']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'androidx.activity:activity-ktx:1.10.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.work:work-runtime-ktx:2.10.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+
+    // Real-time viewer presence/counts. Firebase is used only for presence;
+    // the existing playlist/player architecture remains unchanged.
+    implementation platform('com.google.firebase:firebase-bom:34.19.0')
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-database'
+    implementation 'com.google.firebase:firebase-messaging'
+
+    def media3Version = '1.9.2'
+    implementation "androidx.media3:media3-exoplayer:${media3Version}"
+    implementation "androidx.media3:media3-exoplayer-hls:${media3Version}"
+    implementation "androidx.media3:media3-exoplayer-dash:${media3Version}"
+    implementation "androidx.media3:media3-ui:${media3Version}"
+    implementation "androidx.media3:media3-session:${media3Version}"
+}
+
+// Keep local/debug builds working when Firebase has not been connected yet.
+// Put google-services.json in app/ to enable live viewer presence at runtime.
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}

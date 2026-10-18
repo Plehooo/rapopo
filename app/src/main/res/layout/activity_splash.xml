@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@color/bg_root"
+    android:padding="@dimen/dp_24">
+
+    <FrameLayout
+        android:id="@+id/splashLogoFrame"
+        android:layout_width="@dimen/dp_76"
+        android:layout_height="@dimen/dp_76"
+        android:background="@drawable/bg_channel"
+        android:padding="@dimen/dp_12"
+        android:alpha="0"
+        android:scaleX="0.6"
+        android:scaleY="0.6">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:src="@drawable/ic_app_logo"
+            android:scaleType="centerInside"
+            android:contentDescription="@string/app_name" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/splashTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/dp_16"
+        android:text="LIVE TV"
+        android:textColor="@color/text_primary"
+        android:textSize="@dimen/sp_26"
+        android:letterSpacing="0.04"
+        android:textStyle="bold"
+        android:alpha="0"
+        android:translationY="@dimen/dp_14" />
+
+    <TextView
+        android:id="@+id/splashSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/dp_4"
+        android:text="by DITZYA"
+        android:textColor="@color/text_secondary"
+        android:textSize="@dimen/sp_14"
+        android:alpha="0"
+        android:translationY="@dimen/dp_14" />
+
+    <ProgressBar
+        android:id="@+id/splashProgress"
+        android:layout_width="@dimen/dp_30"
+        android:layout_height="@dimen/dp_30"
+        android:layout_marginTop="@dimen/dp_18"
+        android:alpha="0" />
+</LinearLayout>
