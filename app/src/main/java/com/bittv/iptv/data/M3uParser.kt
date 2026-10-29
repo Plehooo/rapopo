@@ -1,6 +1,7 @@
 package com.bittv.iptv.data
 
 import java.net.URI
+import com.bittv.iptv.util.DitaiM3uHeaderParser
 
 object M3uParser {
     private val attributeRegex = Regex("([A-Za-z0-9_-]+)\\s*=\\s*\"([^\"]*)\"")
@@ -31,10 +32,10 @@ object M3uParser {
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> pending = parseExtInf(line)
                 line.startsWith("#EXTVLCOPT:", ignoreCase = true) -> {
-                    parseVlcOpt(line.substringAfter(':')).forEach { (k, v) -> pendingHeaders[k] = v }
+                    DitaiM3uHeaderParser.parseVlcOpt(line.substringAfter(':')).forEach { (k, v) -> pendingHeaders[k] = v }
                 }
                 line.startsWith("#EXTHTTP:", ignoreCase = true) -> {
-                    parseHeaderBlock(line.substringAfter(':')).forEach { (k, v) -> pendingHeaders[k] = v }
+                    DitaiM3uHeaderParser.parseHeaderBlock(line.substringAfter(':')).forEach { (k, v) -> pendingHeaders[k] = v }
                 }
                 line.startsWith("#EXTGRP:", ignoreCase = true) -> {
                     pending = pending?.copy(group = line.substringAfter(':').trim().ifBlank { "Ungrouped" })
@@ -51,7 +52,7 @@ object M3uParser {
                     val raw = line.substringBefore("#").trim()
                     val parts = raw.split("|", limit = 2)
                     val url = resolveUrl(parts[0], baseUrl) ?: continue
-                    val inlineHeaders = if (parts.size == 2) parseHeaderBlock(parts[1]) else emptyMap()
+                    val inlineHeaders = if (parts.size == 2) DitaiM3uHeaderParser.parseHeaderBlock(parts[1]) else emptyMap()
                     val p = pending
                     val name = p?.name?.takeIf { it.isNotBlank() } ?: url
                     val id = p?.id?.takeIf { it.isNotBlank() }
@@ -116,19 +117,6 @@ object M3uParser {
         )
     }
 
-    private fun parseVlcOpt(value: String): Map<String, String> {
-        val eq = value.indexOf('=')
-        if (eq <= 0) return emptyMap()
-        val key = value.substring(0, eq).trim().lowercase()
-        val v = value.substring(eq + 1).trim()
-        return when (key) {
-            "http-referrer", "http-referer" -> mapOf("Referer" to v)
-            "http-user-agent" -> mapOf("User-Agent" to v)
-            "http-origin" -> mapOf("Origin" to v)
-            else -> emptyMap()
-        }
-    }
-
     private fun parseKodiProp(value: String): Pair<String, String>? {
         val eq = value.indexOf('=')
         if (eq <= 0) return null
@@ -137,16 +125,6 @@ object M3uParser {
         if (key.isBlank() || v.isBlank()) return null
         return key to v
     }
-
-    private fun parseHeaderBlock(value: String): Map<String, String> =
-        value.split('&', '|', '\n')
-            .mapNotNull { part ->
-                val eq = part.indexOf('=')
-                if (eq <= 0) return@mapNotNull null
-                val key = part.substring(0, eq).trim()
-                val v = part.substring(eq + 1).trim()
-                if (key.isBlank() || v.isBlank()) null else key to v
-            }.toMap()
 
     private fun resolveUrl(value: String, baseUrl: String?): String? {
         if (value.startsWith("http://", true) || value.startsWith("https://", true)) return value
